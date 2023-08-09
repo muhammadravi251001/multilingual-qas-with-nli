@@ -19,6 +19,8 @@ if __name__ == "__main__":
     
     if "xlm-roberta" in MODEL_NAME:
         is_xlmr = True
+    else:
+        is_xlmr = False
     
     if (args.data_name) == "kornli":
         DATA_NAME = "KorNLI"
@@ -273,64 +275,63 @@ if __name__ == "__main__":
     def represent_prediction_output(predict_result):
         predictions_idx = np.argmax(predict_result.predictions, axis=1)
         label_array = np.asarray(predict_result.label_ids)
-        
+
         premise_array = []
         hypothesis_array = []
-        
+
         pred_label_array = []
         gold_label_array = []
-        
+
         for i in tqdm(range(len(predict_result.predictions))):
-            
+
             premise = []
             hypothesis = []
-            
-            if len(predict_result.predictions[0]) == len(tokenized_data_nli_dev):
+
+            if len(predict_result.predictions) == len(tokenized_data_nli_dev):
                 tokenized_data = tokenized_data_nli_dev
-            
-            elif len(predict_result.predictions[0]) == len(tokenized_data_nli_test):
+
+            elif len(predict_result.predictions) == len(tokenized_data_nli_test):
                 tokenized_data = tokenized_data_nli_test
-            
-            for j in range(len(tokenized_data[i]['token_type_ids'])):
-                
-                if is_xlmr:
-                    start_premise = tokenized_data[i]['input_ids'].index(0)
-                    end_premise = tokenized_data[i]['input_ids'].index(2)  + 1
-                    start_hypothesis = end_premise
 
-                    premise.append(tokenized_data[i]['input_ids'][start_premise: end_premise])
-                    hypothesis.append(tokenized_data[i]['input_ids'][start_hypothesis: ])
+            if is_xlmr:
+                start_premise = tokenized_data[i]['input_ids'].index(0)
+                end_premise = tokenized_data[i]['input_ids'].index(2)  + 1
+                start_hypothesis = end_premise
 
-                    premise_decoded = tokenizer.decode(premise, skip_special_tokens=True)
-                    hypothesis_decoded = tokenizer.decode(hypothesis, skip_special_tokens=True)
-                
-                else:
-                    if tokenized_data[i]['token_type_ids'][j] == 0:
+                premise.append(tokenized_data[i]['input_ids'][start_premise: end_premise])
+                hypothesis.append(tokenized_data[i]['input_ids'][start_hypothesis: ])
+
+                premise_decoded = tokenizer.decode(premise[0], skip_special_tokens=True)
+                hypothesis_decoded = tokenizer.decode(hypothesis[0], skip_special_tokens=True)
+
+            else:
+                for j in range(len(tokenized_data[i]['token_type_ids'])):
+                    if tokenized_data_nli_test[i]['token_type_ids'][j] == 0:
                         premise.append(tokenized_data[i]['input_ids'][j])
 
                     else:
                         hypothesis.append(tokenized_data[i]['input_ids'][j])
-            
+
                     premise_decoded = tokenizer.decode(premise, skip_special_tokens=True)
                     hypothesis_decoded = tokenizer.decode(hypothesis, skip_special_tokens=True)
 
             premise_array.append(premise_decoded)
             hypothesis_array.append(hypothesis_decoded)
-            
+
             pred_label_array.append(predictions_idx[i])
             gold_label_array.append(label_array[i])
-            
+
         id2label = {0: 'entailment', 1: 'neutral', 2: 'contradiction'}
-        
+
         nli_df = pd.DataFrame({'Premise': premise_array, 
                                 'Hypothesis': hypothesis_array,
-                            'Prediction Label': pred_label_array,
-                            'Gold Label': gold_label_array
+                                'Prediction Label': pred_label_array,
+                                'Gold Label': gold_label_array
                                 })
-        
+
         nli_df["Prediction Label"] = nli_df["Prediction Label"].map(id2label)
         nli_df["Gold Label"] = nli_df["Gold Label"].map(id2label)
-        
+
         return nli_df
     
     predict_result = trainer_sc.predict(tokenized_data_nli_test)

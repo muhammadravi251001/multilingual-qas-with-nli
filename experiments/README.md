@@ -60,7 +60,7 @@ python main_training_korean_nli.py -h
 
 To run this training IndoNLI experiments, you just only do this, you optionally need to passing arguments to all parameter in `--help` menu if you don't want using the default value provided:
 ```
-python main_training_korean_nli.py -m xlmr -d kornli -e 10 -sa max
+python main_training_korean_nli.py -m xlm-roberta-large -d kornli -e 10 -sa max
 ```
 
 ## Location of predictions
