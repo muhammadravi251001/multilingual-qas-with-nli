@@ -51,15 +51,20 @@ jupyter notebook --allow-root
 kubectl port-forward [POD_NAME] 8888:8888
 ```
 
-## Running experiments for training IndoNLI
+## Running experiments for training Korean NLI
 
 Please, check the arguments that can be passed to this code; the datatype, arguments choice, and default value.
 ```
 python main_training_korean_nli.py -h
 ```
 
-To run this training IndoNLI experiments, you just only do this, you optionally need to passing arguments to all parameter in `--help` menu if you don't want using the default value provided:
+To run this training Korean NLI experiments, you just only do this, you optionally need to passing arguments to all parameter in `--help` menu if you don't want using the default value provided.
+
+Example:
 ```
+python main_training_korean_nli.py -m kykim/bert-kor-base -d kornli -e 10 -sa max
+python main_training_korean_nli.py -m klue/bert-base -d kornli -e 10 -sa max
+python main_training_korean_nli.py -m xlm-roberta-base -d kornli -e 10 -sa max
 python main_training_korean_nli.py -m xlm-roberta-large -d kornli -e 10 -sa max
 ```
 
