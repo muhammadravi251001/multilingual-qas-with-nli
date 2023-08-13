@@ -115,7 +115,7 @@ if __name__ == "__main__":
         data_dev = pd.read_csv("xnli.dev.ko.tsv", sep='\t', on_bad_lines='skip')
         data_test = pd.read_csv("xnli.test.ko.tsv", sep='\t', on_bad_lines='skip')
 
-        data_train = pd.concat([data_train_multinli, data_train_snli])
+        data_train = pd.concat([data_train_multinli, data_train_snli], axis=0, ignore_index=True)
 
         data_train = data_train[['sentence1', 'sentence2', 'gold_label']]
         data_train = data_train.rename(columns={'sentence1': 'premise', 
