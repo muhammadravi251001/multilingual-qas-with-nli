@@ -116,29 +116,41 @@ if __name__ == "__main__":
         data_test = pd.read_csv("xnli.test.ko.tsv", sep='\t', on_bad_lines='skip')
 
         data_train = pd.concat([data_train_multinli, data_train_snli])
-        data_train['gold_label'] = data_train['gold_label'].replace(['entailment'], 0)
-        data_train['gold_label'] = data_train['gold_label'].replace(['contradiction'], 1)
-        data_train['gold_label'] = data_train['gold_label'].replace(['neutral'], 2)
 
-        data_dev['gold_label'] = data_dev['gold_label'].replace(['entailment'], 0)
-        data_dev['gold_label'] = data_dev['gold_label'].replace(['contradiction'], 1)
-        data_dev['gold_label'] = data_dev['gold_label'].replace(['neutral'], 2)
+        data_train = data_train[['sentence1', 'sentence2', 'gold_label']]
+        data_train = data_train.rename(columns={'sentence1': 'premise', 
+                                                'sentence2': 'hypothesis', 
+                                                'gold_label': 'label'})
 
-        data_test['gold_label'] = data_test['gold_label'].replace(['entailment'], 0)
-        data_test['gold_label'] = data_test['gold_label'].replace(['contradiction'], 1)
-        data_test['gold_label'] = data_test['gold_label'].replace(['neutral'], 2)
+        data_dev = data_dev[['sentence1', 'sentence2', 'gold_label']]
+        data_dev = data_dev.rename(columns={'sentence1': 'premise', 
+                                            'sentence2': 'hypothesis', 
+                                            'gold_label': 'label'})
+
+        data_test = data_test[['sentence1', 'sentence2', 'gold_label']]
+        data_test = data_test.rename(columns={'sentence1': 'premise', 
+                                              'sentence2': 'hypothesis', 
+                                              'gold_label': 'label'})
+
+        data_train['label'] = data_train['label'].replace(['entailment'], 0)
+        data_train['label'] = data_train['label'].replace(['contradiction'], 1)
+        data_train['label'] = data_train['label'].replace(['neutral'], 2)
+
+        data_dev['label'] = data_dev['label'].replace(['entailment'], 0)
+        data_dev['label'] = data_dev['label'].replace(['contradiction'], 1)
+        data_dev['label'] = data_dev['label'].replace(['neutral'], 2)
+
+        data_test['label'] = data_test['label'].replace(['entailment'], 0)
+        data_test['label'] = data_test['label'].replace(['contradiction'], 1)
+        data_test['label'] = data_test['label'].replace(['neutral'], 2)
 
         data_train = data_train.dropna()
         data_dev = data_dev.dropna()
         data_test = data_test.dropna()
 
-        data_train['gold_label'] = data_train['gold_label'].astype('int')
-        data_dev['gold_label'] = data_dev['gold_label'].astype('int')
-        data_test['gold_label'] = data_test['gold_label'].astype('int')
-        
-        data_train.rename(columns = {'gold_label':'label'}, inplace = True)
-        data_dev.rename(columns = {'gold_label':'label'}, inplace = True)
-        data_test.rename(columns = {'gold_label':'label'}, inplace = True)
+        data_train['label'] = data_train['label'].astype('int')
+        data_dev['label'] = data_dev['label'].astype('int')
+        data_test['label'] = data_test['label'].astype('int')
 
         train_dataset = Dataset.from_dict(data_train)
         dev_dataset = Dataset.from_dict(data_dev)
@@ -146,28 +158,28 @@ if __name__ == "__main__":
 
         data_nli = DatasetDict({"train": train_dataset, "dev": dev_dataset, "test": test_dataset})
 
-    def preprocess_function_indonli(examples, tokenizer, MAX_LENGTH):
+    def preprocess_function_nli(examples, tokenizer, MAX_LENGTH):
 
         if is_xlmr:
             return tokenizer(
-                examples['sentence1'], examples['sentence2'],
+                examples['premise'], examples['hypothesis'],
                 truncation=True,
                 max_length=MAX_LENGTH
             )
 
         else:
             return tokenizer(
-                examples['sentence1'], examples['sentence2'],
+                examples['premise'], examples['hypothesis'],
                 truncation=True, return_token_type_ids=True,
                 max_length=MAX_LENGTH
             )
 
     tokenized_data_nli = data_nli.map(
-        preprocess_function_indonli,
+        preprocess_function_nli,
         batched=True,
         load_from_cache_file=True,
         num_proc=1,
-        remove_columns=['sentence1', 'sentence2'],
+        remove_columns=['premise', 'hypothesis'],
         fn_kwargs={'tokenizer': tokenizer, 'MAX_LENGTH': MAX_LENGTH}
     )
 
@@ -211,7 +223,7 @@ if __name__ == "__main__":
         NAME = f'KoreanNLI-{DATA_NAME}-with-{str(MODEL_NAME)}'
     else:
         new_name = re.findall(r'.*/(.*)$', MODEL_NAME)[0]
-        NAME = f'KoreanIndoNLI-{DATA_NAME}-with-{str(new_name)}'
+        NAME = f'KoreanNLI-{DATA_NAME}-with-{str(new_name)}'
     
     SC = f'./results/{NAME}-{TIME_NOW}'
     CHECKPOINT_DIR = f'{SC}/checkpoint/'
