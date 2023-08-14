@@ -267,6 +267,8 @@ if __name__ == "__main__":
         hub_model_id=REPO_NAME,
         load_best_model_at_end=True,
         metric_for_best_model='f1',
+        save_total_limit=1,
+        resume_from_checkpoint=True
     )
 
     trainer_sc = Trainer(
@@ -280,7 +282,7 @@ if __name__ == "__main__":
         callbacks = [EarlyStoppingCallback(early_stopping_patience=3)]
     )
 
-    trainer_sc.train()
+    trainer_sc.train(resume_from_checkpoint=True)
 
     trainer_sc.save_model(MODEL_DIR)
 
