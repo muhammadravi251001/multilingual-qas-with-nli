@@ -16,8 +16,8 @@ MODEL_TOOLS_NAME_POS = "ageng-anugrah/indobert-large-p2-finetuned-chunking"
 
 MODEL_SIMILARITY_NAME = "paraphrase-multilingual-mpnet-base-v2"
 
-# SAMPLE = sys.maxsize
-SAMPLE = 50
+SAMPLE = sys.maxsize
+# SAMPLE = 50
 
 
 # # Import anything
@@ -566,7 +566,8 @@ if __name__ == "__main__":
     def replace_same_answer(right_answer, 
                             wrong_answer, 
                             premise, 
-                            plausible_answer_array):
+                            plausible_answer_array,
+                            flag):
         
         # Removing right answer & wrong answer in this particular time
         plausible_answer_array = [item for item in plausible_answer_array \
@@ -579,8 +580,12 @@ if __name__ == "__main__":
 
         else:
             wrong_answer = plausible_answer_array[0] # Take the highest value in the sorted array
-            properties = """Detected span that is the SAME as the right answer, \
-                                    search the highest value in the sorted array"""
+            if flag == "ner":
+                properties = """Detected span that is the SAME as the right answer, \
+                                    search the highest value in the sorted array of NER"""
+            elif flag == "chunking":
+                properties = """Detected span that is the SAME as the right answer, \
+                                    search the highest value in the sorted array of Chunking"""
 
         return wrong_answer, properties, plausible_answer_array
 
@@ -684,6 +689,8 @@ if __name__ == "__main__":
 
             chunking_tag_answer = data['chunking_tag_answer'][i]
             chunking_tag_premise = data['chunking_tag_premise'][i]
+
+            flag = ""
             
             # Grouped with the same NER & Chunking group, between answer and word of premise
             data['same_ner_tag_answer'][i] = grouping_same_tag(ner_tag_answer,
@@ -702,6 +709,7 @@ if __name__ == "__main__":
             # similarity or word vectors between the right_answer and various possible wrong_answers with 
             # the same NER as the right_answer. Once done, proceed to the final wrong_answer.
             if data['same_ner_tag_answer'][i] != []:
+                flag = "ner"
                 wrong_answer, plausible_answer_array, properties = sorting_similarity(data, right_answer, \
                                                                         i, "ner", plausible_answer_array)
                 #wrong_answer, properties = create_answer_match_to_multiple_label(data, i, "ner", wrong_answer,
@@ -711,7 +719,8 @@ if __name__ == "__main__":
             # any of NER of right_answer, then the POS/Chunking of the right_answer will be identified.
             # Perform POS/Chunking classification
             else:
-                
+
+                flag = "chunking"
                 # If the POS/Chunking of the right_answer can be detected, then calculate the distance 
                 # using semantic similarity or word vectors between the right_answer and various possible 
                 # wrong_answers with the same POS/Chunking as the right_answer. Once done, proceed to the 
@@ -747,7 +756,8 @@ if __name__ == "__main__":
                 wrong_answer, properties, plausible_answer_array = replace_same_answer(right_answer, 
                                                                                     wrong_answer, 
                                                                                     premise, 
-                                                                                    plausible_answer_array)
+                                                                                    plausible_answer_array,
+                                                                                    flag)
                 data['properties'][i] = properties
             
             data['wrong_answer'][i] = wrong_answer
