@@ -3,7 +3,17 @@
 
 # # Define tool and model of the tool
 
-# In[1]:
+# In[2]:
+
+
+#import os, torch
+#os.environ["TOKENIZERS_PARALLELISM"] = "false"
+#os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
+#os.environ['CUDA_VISIBLE_DEVICES'] = '6'
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# In[3]:
 
 
 import sys
@@ -17,12 +27,12 @@ MODEL_TOOLS_NAME_POS = "ageng-anugrah/indobert-large-p2-finetuned-chunking"
 MODEL_SIMILARITY_NAME = "paraphrase-multilingual-mpnet-base-v2"
 
 SAMPLE = sys.maxsize
-# SAMPLE = 50
+# SAMPLE = 100
 
 
 # # Import anything
 
-# In[2]:
+# In[4]:
 
 
 import transformers
@@ -71,10 +81,16 @@ from transformers import (
 
 # # Retrieve QA dataset
 
-# In[3]:
+# In[5]:
+
+
+print("PROGRAM STARTED")
+
+
+# In[6]:
+
 if __name__ == "__main__":
 
-    print("PROGRAM STARTED")
 
     conhelps = NusantaraConfigHelper()
     data_qas = conhelps.filtered(lambda x: 'idk_mrc' in x.dataset_name)[0].load_dataset()
@@ -155,14 +171,14 @@ if __name__ == "__main__":
 
     # ## Convert Dataset to DataFrame format
 
-    # In[4]:
+    # In[7]:
 
 
     seed_value = 42
     random.seed(seed_value)
 
 
-    # In[5]:
+    # In[8]:
 
 
     if SAMPLE == sys.maxsize:
@@ -182,7 +198,7 @@ if __name__ == "__main__":
 
     # ## Retrieve answer text only
 
-    # In[6]:
+    # In[9]:
 
 
     def retrieve_answer_text(data):
@@ -191,7 +207,7 @@ if __name__ == "__main__":
         return data
 
 
-    # In[7]:
+    # In[10]:
 
 
     data_qas_train_df = retrieve_answer_text(data_qas_train_df)
@@ -199,7 +215,7 @@ if __name__ == "__main__":
     data_qas_test_df = retrieve_answer_text(data_qas_test_df)
 
 
-    # In[8]:
+    # In[11]:
 
 
     x = data_qas_train_df[data_qas_train_df['answer'] == '']
@@ -207,7 +223,7 @@ if __name__ == "__main__":
     z = data_qas_test_df[data_qas_test_df['answer'] == '']
 
 
-    # In[9]:
+    # In[12]:
 
 
     def returning_answer_form_and_answer_that_suitable(data):
@@ -251,7 +267,7 @@ if __name__ == "__main__":
 
     # ## Delete all unanswerable row
 
-    # In[10]:
+    # In[13]:
 
 
     data_qas_train_df = data_qas_train_df[data_qas_train_df['answer'] != '']
@@ -261,7 +277,7 @@ if __name__ == "__main__":
 
     # ### Reset index number
 
-    # In[11]:
+    # In[14]:
 
 
     data_qas_train_df = data_qas_train_df.reset_index(drop=True)
@@ -271,7 +287,7 @@ if __name__ == "__main__":
 
     # ## Create NLI dataset from copy of QA dataset above
 
-    # In[12]:
+    # In[15]:
 
 
     #x = [
@@ -286,7 +302,7 @@ if __name__ == "__main__":
     #x
 
 
-    # In[13]:
+    # In[16]:
 
 
     data_nli_train_df = data_qas_train_df.copy()
@@ -296,7 +312,7 @@ if __name__ == "__main__":
 
     # ## Convert context pair to premise (only renaming column)
 
-    # In[14]:
+    # In[17]:
 
 
     data_nli_train_df = data_nli_train_df.rename(columns={"context": "premise"})
@@ -308,7 +324,7 @@ if __name__ == "__main__":
 
     # ## Import pipeline to create contradiction cases
 
-    # In[15]:
+    # In[18]:
 
 
     nlp_tools_ner = pipeline(task = TOOLS_NAME_NER, 
@@ -319,7 +335,7 @@ if __name__ == "__main__":
                         aggregation_strategy = 'simple')
 
 
-    # In[16]:
+    # In[19]:
 
 
     nlp_tools_chunking = pipeline(task = TOOLS_NAME_POS, 
@@ -332,7 +348,16 @@ if __name__ == "__main__":
 
     # ## Add NER and chunking tag column in DataFrame
 
-    # In[17]:
+    # In[20]:
+
+
+    def remove_space_after_number_and_punctuation(text):
+        pattern = r'(\d+)\s*([.,])\s*(?=\S|$)'
+        cleaned_text = re.sub(pattern, r'\1\2', text)
+        return cleaned_text
+
+
+    # In[21]:
 
 
     def add_row_tag(answer, tag, ner=nlp_tools_ner, chunking=nlp_tools_chunking):
@@ -345,7 +370,7 @@ if __name__ == "__main__":
         
         if len(retrieved_from_tools) != 0:
             for i in retrieved_from_tools:
-                tag_answer = (i['entity_group'], i['word'])
+                tag_answer = (i['entity_group'], remove_space_after_number_and_punctuation(i['word']))
                 tag_answer_list.append(tag_answer)
         else:
             tag_answer = ("NULL", answer)
@@ -354,7 +379,7 @@ if __name__ == "__main__":
         return tag_answer_list
 
 
-    # In[18]:
+    # In[22]:
 
 
     def add_premise_tag(data, tag, index, premise_array, ner=nlp_tools_ner, chunking=nlp_tools_chunking):
@@ -367,13 +392,13 @@ if __name__ == "__main__":
         
         else:
             for j in tools(data['premise'][index]):
-                tag_premise = (j['entity_group'], j['word'])
+                tag_premise = (j['entity_group'], remove_space_after_number_and_punctuation(j['word']))
                 premise_array.append(tag_premise)
 
         return premise_array
 
 
-    # In[19]:
+    # In[23]:
 
 
     def add_ner_and_chunking_all_tag(data):
@@ -401,7 +426,7 @@ if __name__ == "__main__":
         return data
 
 
-    # In[20]:
+    # In[24]:
 
 
     data_nli_train_df = add_ner_and_chunking_all_tag(data_nli_train_df)
@@ -429,15 +454,15 @@ if __name__ == "__main__":
     #    
     #    4b. If the POS/Chunking of the right_answer cannot be detected (NULL) or context/premise does not contain any of NER of right_answer, then the final wrong_answer will be chosen based on a random word (random_word) from the context/premise.
 
-    # In[21]:
+    # In[25]:
 
 
     model_similarity = SentenceTransformer(MODEL_SIMILARITY_NAME)
 
     def return_similarity_sorted_array(right_answer, sentence_array, model=model_similarity):
         
-        embedding_right_answer = model.encode([right_answer], convert_to_tensor=True)
-        embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True)
+        embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device)
+        embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device)
         
         cosine_scores = util.pytorch_cos_sim(embedding_right_answer, embedding_sentence_array)
         
@@ -447,14 +472,14 @@ if __name__ == "__main__":
         return sorted_array
 
 
-    # In[22]:
+    # In[26]:
 
 
     def remove_values_with_hash(arr):
         return [item for item in arr if "#" not in item]
 
 
-    # In[23]:
+    # In[27]:
 
 
     def select_random_word(text):
@@ -463,7 +488,7 @@ if __name__ == "__main__":
         return random_word
 
 
-    # In[24]:
+    # In[28]:
 
 
     def grouping_same_tag(tag_answers, tag_premises, same_tag_array):
@@ -483,49 +508,35 @@ if __name__ == "__main__":
         return remove_values_with_hash(same_tag_array)
 
 
-    # In[25]:
+    # In[29]:
 
 
-    def sorting_similarity(data, right_answer, index, tag, plausible_answer_array):
+    def remove_punctuation(text):
+        return text.strip(string.punctuation)
 
-        if tag == "ner": slice='same_ner_tag_answer'
-        elif tag == "chunking": slice='same_chunking_tag_answer'
-        else: slice=None
-            
-        plausible_answer_array = [item for item in plausible_answer_array \
-                                if item not in [right_answer.lower()]]
 
-        # Find all the sorted (by similarity) plausible wrong answer, 
-        # and remove hask & punctuation only answer
-        if slice != None:
-            wrong_answer_array = return_similarity_sorted_array(right_answer, data[slice][index])
-        else:
-            wrong_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
+    # In[30]:
+
+
+    def filtering_plausible_answer(answer, plausible_answer_array):
+        answer = answer.lower()
         
-        plausible_answer_array = remove_values_with_hash(wrong_answer_array)
-        plausible_answer_array = [string for string in plausible_answer_array \
-                                        if not contains_only_punctuation(string)]
-
-        # Only return the most similar to right_answer
-        wrong_answer = plausible_answer_array[0]
+        plausible_answer_array = [item.lower().strip() for item in plausible_answer_array]
+        plausible_answer_array = [string for string in plausible_answer_array if not contains_only_punctuation(string)]
+        plausible_answer_array = [remove_punctuation(text) for text in plausible_answer_array]
         
-        assert isinstance(wrong_answer, str)
-        assert isinstance(plausible_answer_array, list)
+        final_plausible_answer_array = []
+        answer_words = set(remove_punctuation(text) for text in answer.split())
         
-        if tag == "ner": 
-            properties = """IDENTICAL NER labels were found, and the highest similarity \
-                                        score same NER array was selected"""
-        elif tag == "chunking":
-            properties = """IDENTICAL Chunking labels were found, and the highest similarity \
-                                            score from same Chunking array was selected"""
-        else:
-            properties = """NO CHUNKING labels were found, and the highest similarity score \
-                                            from plausible answer was selected"""
+        for plausible_answer in plausible_answer_array:
+            plausible_answer_words = set(plausible_answer.split())
+            if not plausible_answer_words.intersection(answer_words):
+                final_plausible_answer_array.append(plausible_answer)
         
-        return wrong_answer, plausible_answer_array, properties
+        return final_plausible_answer_array
 
 
-    # In[26]:
+    # In[31]:
 
 
     def find_substring_span(long_string, substring):
@@ -539,10 +550,6 @@ if __name__ == "__main__":
             return start_index, end_index
         else:
             return None
-
-
-    # In[27]:
-
 
     def check_span_overlap(span1, span2):
         if span1 == None or span2 == None: return True # Exit plan
@@ -560,112 +567,52 @@ if __name__ == "__main__":
         return all(char in string.punctuation for char in text)
 
 
-    # In[28]:
+    # In[32]:
 
 
-    def replace_same_answer(right_answer, 
-                            wrong_answer, 
-                            premise, 
-                            plausible_answer_array,
-                            flag):
-        
-        # Removing right answer & wrong answer in this particular time
-        plausible_answer_array = [item for item in plausible_answer_array \
-                                if item not in [right_answer.lower(), wrong_answer.lower()]]
+    def sorting_similarity(data, right_answer, index, tag, plausible_answer_array, premise):
 
-        if len(plausible_answer_array) <= 1:
-            wrong_answer = select_random_word(premise) # There's still have a chance to gave "invalid" answer
-            properties = """Detected span that is the SAME as the right answer, \
-                                    search random word from premise"""
+        if tag == "ner": slice='same_ner_tag_answer'
+        elif tag == "chunking": slice='same_chunking_tag_answer'
+        else: slice=None
 
+        # Find all the sorted (by similarity) plausible wrong answer, 
+        # and remove hask & punctuation only answer
+        if slice != None:
+            wrong_answer_array = return_similarity_sorted_array(right_answer, data[slice][index])
         else:
-            wrong_answer = plausible_answer_array[0] # Take the highest value in the sorted array
-            if flag == "ner":
-                properties = """Detected span that is the SAME as the right answer, \
-                                    search the highest value in the sorted array of NER"""
-            elif flag == "chunking":
-                properties = """Detected span that is the SAME as the right answer, \
-                                    search the highest value in the sorted array of Chunking"""
-
-        return wrong_answer, properties, plausible_answer_array
-
-
-    # In[29]:
-
-
-    def is_multiple_label(data, index, tag):
+            wrong_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
         
-        if tag == "ner": slice='ner_tag_answer'
-        elif tag == "chunking": slice='chunking_tag_answer'
-        else: pass
+        plausible_answer_array = remove_values_with_hash(wrong_answer_array)
+        plausible_answer_array = filtering_plausible_answer(right_answer, plausible_answer_array)
+        
+        try:
+            # Only return the most similar to right_answer
+            wrong_answer = plausible_answer_array[0].strip()
             
-        if len(data[slice][index]) > 1: return True
-        else: return False
-
-
-    # In[30]:
-
-
-    def create_answer_match_to_multiple_label(data, 
-                                            index, 
-                                            tag,
-                                            wrong_answer, 
-                                            plausible_answer_array):
-        
-        if tag == "none":
-            for answer in plausible_answer_array:
-                if len(answer.split()) == len(wrong_answer.split()):
-                    wrong_answer = answer
-                    break
-        
-        else:
-            
-            if is_multiple_label(data, index, tag):
-                # Check if wrong_answer a form of sentence?
-                # If not, look for a wrong_answer in the form of a sentence
-                if len(wrong_answer.split()) == 1:
-                    for answer in plausible_answer_array:
-                        if len(answer.split()) > 1:
-                            wrong_answer = answer
-                            break
-
+            if tag == "ner": 
+                properties = "IDENTICAL NER labels were found, and the highest similarity score same NER array was selected"
+            elif tag == "chunking":
+                properties = "IDENTICAL Chunking labels were found, and the highest similarity score from same Chunking array was selected"
             else:
-                # Check if wrong_answer a form of word?
-                # If not, look for a wrong_answer in the form of a word
-                if len(wrong_answer.split()) > 1:
-                    for answer in plausible_answer_array:
-                        if len(answer.split()) == 1:
-                            wrong_answer = answer
-                            break
-                            
-        # We can try this out, actually.
-        # With this code, we only have just check the length of each answer. 
-        # We don't need is_multiple_label function check.
-        #if len(right_answer) != len(wrong_answer):
-        #    for answer in plausible_answer_array:
-        #        if len(answer) == len(right_answer):
-        #            wrong_answer = answer
-        #            break
-                        
-        if tag == "ner": 
-            properties = """IDENTICAL NER labels were found, however, \
-                            the final wrong_answer is sought \
-                            which is a form of a sentence"""
+                properties = "NO CHUNKING labels were found, and the highest similarity score from plausible answer was selected"
+        except:
+            wrong_answer = select_random_word(premise)
+            
+            if tag == "ner": 
+                properties = "Detected (NER) wrong answer that is the SAME as the right answer, search random word from premise"
+            elif tag == "chunking":
+                properties = "Detected (Chunking) wrong answer that is the SAME as the right answer, search random word from premise"
+            else:
+                properties = "Detected (Random) wrong answer that is the SAME as the right answer, search random word from premise"
         
-        elif tag == "chunking":
-            properties = """IDENTICAL Chunking labels were found, however, \
-                            the final wrong_answer is sought \
-                            which is a form of a word"""
+        assert isinstance(wrong_answer, str)
+        assert isinstance(plausible_answer_array, list)
         
-        elif tag == "none":
-            properties = """NO CHUNKING labels were found, however, \
-                            the final wrong_answer is sought \
-                            which is a same form (word or sentence)"""
-                        
-        return wrong_answer, properties
+        return wrong_answer, plausible_answer_array, properties
 
 
-    # In[31]:
+    # In[33]:
 
 
     def create_wrong_answer(data):
@@ -689,8 +636,6 @@ if __name__ == "__main__":
 
             chunking_tag_answer = data['chunking_tag_answer'][i]
             chunking_tag_premise = data['chunking_tag_premise'][i]
-
-            flag = ""
             
             # Grouped with the same NER & Chunking group, between answer and word of premise
             data['same_ner_tag_answer'][i] = grouping_same_tag(ner_tag_answer,
@@ -700,7 +645,7 @@ if __name__ == "__main__":
             data['same_chunking_tag_answer'][i] = grouping_same_tag(chunking_tag_answer, 
                                                                     chunking_tag_premise, 
                                                                     same_chunking_tag_answer_array)
-                
+            
             # Start to create wrong answer
             plausible_answer_array = []
 
@@ -709,27 +654,20 @@ if __name__ == "__main__":
             # similarity or word vectors between the right_answer and various possible wrong_answers with 
             # the same NER as the right_answer. Once done, proceed to the final wrong_answer.
             if data['same_ner_tag_answer'][i] != []:
-                flag = "ner"
                 wrong_answer, plausible_answer_array, properties = sorting_similarity(data, right_answer, \
-                                                                        i, "ner", plausible_answer_array)
-                #wrong_answer, properties = create_answer_match_to_multiple_label(data, i, "ner", wrong_answer,
-                #                                                                 plausible_answer_array)
+                                                                        i, "ner", plausible_answer_array, premise)
                 
             # If the NER of the right_answer cannot be detected (NULL) or context/premise does not contain 
             # any of NER of right_answer, then the POS/Chunking of the right_answer will be identified.
             # Perform POS/Chunking classification
             else:
-
-                flag = "chunking"
                 # If the POS/Chunking of the right_answer can be detected, then calculate the distance 
                 # using semantic similarity or word vectors between the right_answer and various possible 
                 # wrong_answers with the same POS/Chunking as the right_answer. Once done, proceed to the 
                 # final wrong_answer.
                 if data['same_chunking_tag_answer'][i] != []:
                     wrong_answer, plausible_answer_array, properties = sorting_similarity(data, right_answer, \
-                                                                            i, "chunking", plausible_answer_array)
-                    #wrong_answer, properties = create_answer_match_to_multiple_label(data, i, "chunking", wrong_answer,
-                    #                                                             plausible_answer_array)
+                                                                            i, "chunking", plausible_answer_array, premise)
                 
                 # If the POS/Chunking of the right_answer cannot be detected (NULL) or context/premise 
                 # does not contain any of NER of right_answer, then the final wrong_answer will be chosen 
@@ -739,34 +677,15 @@ if __name__ == "__main__":
                         plausible_answer_array.append(chunking_tag[1])
 
                     wrong_answer, plausible_answer_array, properties = sorting_similarity(data, right_answer, \
-                                                                            i, "none", plausible_answer_array)
-                    #wrong_answer, properties = create_answer_match_to_multiple_label(data, i, "none", wrong_answer,
-                    #                                                             plausible_answer_array)
-
-            # Check for preventing same answer for right_answer and wrong_answer  
-            right_answer_span = find_substring_span(premise, right_answer)
-            wrong_answer_span = find_substring_span(premise, wrong_answer)
-            
-            is_span_or_same_literal = check_span_overlap(right_answer_span, wrong_answer_span) \
-                    or check_string_overlap(right_answer.lower(), wrong_answer.lower())
-
-            if is_span_or_same_literal:
-
-                # Removing right answer & wrong answer in this particular time
-                wrong_answer, properties, plausible_answer_array = replace_same_answer(right_answer, 
-                                                                                    wrong_answer, 
-                                                                                    premise, 
-                                                                                    plausible_answer_array,
-                                                                                    flag)
-                data['properties'][i] = properties
-            
+                                                                            i, "none", plausible_answer_array, premise)
+            data['properties'][i] = properties
             data['wrong_answer'][i] = wrong_answer
             data['plausible_answer_based_on_method'][i] = plausible_answer_array
                 
         return data       
 
 
-    # In[32]:
+    # In[34]:
 
 
     def create_wrong_answer_with_removing_invalid_data(data):
@@ -799,25 +718,25 @@ if __name__ == "__main__":
             data['same_chunking_tag_answer'][i] = grouping_same_tag(chunking_tag_answer, 
                                                                     chunking_tag_premise, 
                                                                     same_chunking_tag_answer_array)
-                
+            
             # Start to create wrong answer
             plausible_answer_array = []
+            
+            # Golden rules: If same_NER isn't there, just drop it. If NER is NULL, check chunking
             
             if ner_tag_answer[0][0] == "NULL":
                 if data['same_chunking_tag_answer'][i] != []:
                     wrong_answer, plausible_answer_array, properties = sorting_similarity(data, right_answer, \
-                                                                            i, "chunking", plausible_answer_array)
-                    #wrong_answer, properties = create_answer_match_to_multiple_label(data, i, "chunking", wrong_answer,
-                    #                                                             plausible_answer_array)
-                
+                                                                            i, "chunking", plausible_answer_array, premise)
                 else:
                     for chunking_tag in chunking_tag_premise:
                         plausible_answer_array.append(chunking_tag[1])
 
                     wrong_answer, plausible_answer_array, properties = sorting_similarity(data, right_answer, \
-                                                                            i, "none", plausible_answer_array)
-                    #wrong_answer, properties = create_answer_match_to_multiple_label(data, i, "none", wrong_answer,
-                    #                                                             plausible_answer_array)
+                                                                            i, "none", plausible_answer_array, premise)
+                data['properties'][i] = properties
+                data['wrong_answer'][i] = wrong_answer
+                data['plausible_answer_based_on_method'][i] = plausible_answer_array
                 continue
 
             # Perform NER classification
@@ -826,53 +745,22 @@ if __name__ == "__main__":
             # the same NER as the right_answer. Once done, proceed to the final wrong_answer.
             if data['same_ner_tag_answer'][i] != [] and ner_tag_answer[0][0] != "NULL":
                 wrong_answer, plausible_answer_array, properties = sorting_similarity(data, right_answer, \
-                                                                        i, "ner", plausible_answer_array)
-                #wrong_answer, properties = create_answer_match_to_multiple_label(data, i, "ner", wrong_answer,
-                #                                                                 plausible_answer_array)
-                
-            # Kalau NER engga ada, baru drop
-            # Kalau NER NULL, cek chunking
+                                                                        i, "ner", plausible_answer_array, premise)
                 
             # If the NER of the right_answer cannot be detected (NULL) or context/premise does not contain 
             # any of NER of right_answer, then drop that particular row data.
             else:
                 data.drop(i, inplace=True)
                 data.reset_index(drop=True)
-                continue
-            
-            # Check for preventing same answer for right_answer and wrong_answer  
-            right_answer_span = find_substring_span(premise, right_answer)
-            wrong_answer_span = find_substring_span(premise, wrong_answer)
-            
-            is_span_or_same_literal = check_span_overlap(right_answer_span, wrong_answer_span) \
-                    or check_string_overlap(right_answer.lower(), wrong_answer.lower())
-
-            if is_span_or_same_literal:
-
-                # I'm still confused, whether the overlapping 
-                # answers (either in span or its literal form) 
-                # should also be dropped or not.
-                # If it's dropped, then, uncomment 3 lines of
-                # code below.
                 
-                data.drop(i, inplace=True)
-                data.reset_index(drop=True)
-                continue
-
-                # Removing right answer & wrong answer in this particular time
-                #wrong_answer, properties, plausible_answer_array = replace_same_answer(right_answer, 
-                #                                                                      wrong_answer, 
-                #                                                                      premise, 
-                #                                                                      plausible_answer_array)
-                #data['properties'][i] = properties
-            
+            data['properties'][i] = properties
             data['wrong_answer'][i] = wrong_answer
             data['plausible_answer_based_on_method'][i] = plausible_answer_array
                 
         return data       
 
 
-    # In[33]:
+    # In[35]:
 
 
     data_nli_train_df = create_wrong_answer_with_removing_invalid_data(data_nli_train_df)
@@ -880,9 +768,50 @@ if __name__ == "__main__":
     data_nli_test_df = create_wrong_answer_with_removing_invalid_data(data_nli_test_df)
 
 
-    # # Split to two dataset: right dataset & wrong dataset
+    # In[36]:
+
+
+    #for i in range(len(data_nli_train_df)):
+        #print("Iterasi:", i)
+        #print("Premise:", data_nli_train_df['premise'][i])
+        #print("Right answer:", data_nli_train_df['answer'][i])
+        #print("Wrong answer:", data_nli_train_df['wrong_answer'][i])
+        #print("Same NER tag answer:", data_nli_train_df['same_ner_tag_answer'][i])
+        #print("Same Chunking tag answer:", data_nli_train_df['same_chunking_tag_answer'][i])
+        #print("Chunking tag premise", data_nli_train_df['chunking_tag_premise'][i])
+        #print("Plausible answer:", data_nli_train_df['plausible_answer_based_on_method'][i])
+        #print("Properties:", data_nli_train_df['properties'][i])
+        #print("Overlap:", check_string_overlap(data_nli_train_df['answer'][i].lower(), data_nli_train_df['wrong_answer'][i].lower()))
+        #print()
+
 
     # In[37]:
+
+
+    #print(len(data_nli_train_df))
+    #(len(data_nli_val_df))
+    #print(len(data_nli_test_df))
+
+
+    # In[38]:
+
+
+    def test_create_wrong_answer(data):
+        assert all(data['properties'] != '')
+        assert all(data['wrong_answer'] != '')
+
+
+    # In[39]:
+
+
+    test_create_wrong_answer(data_nli_train_df)
+    test_create_wrong_answer(data_nli_val_df)
+    test_create_wrong_answer(data_nli_test_df)
+
+
+    # # Split to two dataset: right dataset & wrong dataset
+
+    # In[ ]:
 
 
     def move_to_column_number(data, column_name="hypothesis", column_num=3):
@@ -896,7 +825,7 @@ if __name__ == "__main__":
         return data
 
 
-    # In[38]:
+    # In[ ]:
 
 
     columns_to_exclude = ['wrong_answer']
@@ -906,7 +835,7 @@ if __name__ == "__main__":
     data_nli_right_test_df = data_nli_test_df.drop(columns=columns_to_exclude).copy()
 
 
-    # In[39]:
+    # In[ ]:
 
 
     columns_to_exclude = ['answer']
@@ -926,7 +855,7 @@ if __name__ == "__main__":
 
     # # Convert question-answer pair to hypothesis
 
-    # In[40]:
+    # In[ ]:
 
 
     def convert_question_and_answer_to_hypothesis(data):
@@ -935,7 +864,7 @@ if __name__ == "__main__":
         return data
 
 
-    # In[41]:
+    # In[ ]:
 
 
     data_nli_right_train_df = convert_question_and_answer_to_hypothesis(data_nli_right_train_df)
@@ -947,7 +876,7 @@ if __name__ == "__main__":
     data_nli_right_test_df = move_to_column_number(data_nli_right_test_df, "hypothesis", 3)
 
 
-    # In[42]:
+    # In[ ]:
 
 
     data_nli_wrong_train_df = convert_question_and_answer_to_hypothesis(data_nli_wrong_train_df)
@@ -961,7 +890,7 @@ if __name__ == "__main__":
 
     # # Add label: entailment & contradiction
 
-    # In[43]:
+    # In[ ]:
 
 
     data_nli_right_train_df['label'] = 'entailment'
@@ -973,7 +902,7 @@ if __name__ == "__main__":
     data_nli_right_train_df = move_to_column_number(data_nli_right_test_df, "label", 4)
 
 
-    # In[44]:
+    # In[ ]:
 
 
     data_nli_wrong_train_df['label'] = 'contradiction'
@@ -987,12 +916,15 @@ if __name__ == "__main__":
 
     # # Concat the right and wrong NLI to one NLI dataset
 
-    # In[45]:
+    # In[ ]:
 
 
     data_nli_train_df_final = pd.concat([data_nli_right_train_df, data_nli_wrong_train_df], axis=0, ignore_index=True)
     data_nli_val_df_final = pd.concat([data_nli_right_val_df, data_nli_wrong_val_df], axis=0, ignore_index=True)
     data_nli_test_df_final = pd.concat([data_nli_right_test_df, data_nli_wrong_test_df], axis=0, ignore_index=True)
+
+
+    # In[ ]:
 
 
     # # Convert to DataFrame format to CSV
@@ -1041,6 +973,10 @@ if __name__ == "__main__":
         repo_type="dataset",
     )
     """
+
+
+# In[ ]:
+
 
     print("PROGRAM FINISHED")
 
