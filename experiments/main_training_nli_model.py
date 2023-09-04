@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-parser = argparse.ArgumentParser(description="Training Korean NLI")
+parser = argparse.ArgumentParser(description="Training NLI model")
 parser.add_argument('-m', '--model_name', type=str, metavar='', required=True)
 parser.add_argument('-d', '--data_name', type=str, metavar='', required=True)
 parser.add_argument('-e', '--epoch', type=int, metavar='', required=True)
@@ -21,14 +21,12 @@ if __name__ == "__main__":
         is_xlmr = True
     else:
         is_xlmr = False
-    
-    if (args.data_name) == "kornli":
-        DATA_NAME = "KorNLI"
 
     if (args.sample) == "max":
         SAMPLE = sys.maxsize
     else: SAMPLE = int(args.sample)
 
+    DATA_NAME = str(args.data_name)
     EPOCH = int(args.epoch)
     LEARNING_RATE = float(args.learn_rate)
     SEED = int(args.seed)
@@ -38,22 +36,7 @@ if __name__ == "__main__":
 
     if HUB_TOKEN == "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": USER = "muhammadravi251001"
 
-    import os.path
-    import wget
-    
-    if (os.path.exists('./multinli.train.ko.tsv') == False):
-        wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/multinli.train.ko.tsv")
-
-    if (os.path.exists('./snli_1.0_train.ko.tsv') == False):
-        wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/snli_1.0_train.ko.tsv")
-
-    if (os.path.exists('./xnli.dev.ko.tsv') == False):
-        wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/xnli.dev.ko.tsv")
-
-    if (os.path.exists('./xnli.test.ko.tsv') == False):
-        wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/xnli.test.ko.tsv")
-
-    print(f"Start training Korean NLI with model: {MODEL_NAME}, data: {DATA_NAME}, epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, and token: {HUB_TOKEN}")
+    print(f"Start training NLI model with model: {MODEL_NAME}, data: {DATA_NAME}, epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, and token: {HUB_TOKEN}")
 
     MODEL_NAME = MODEL_NAME
     EPOCH = EPOCH
@@ -79,6 +62,7 @@ if __name__ == "__main__":
     import evaluate
     import torch
     import re
+    import wget
 
     import numpy as np
     import pandas as pd
@@ -108,7 +92,19 @@ if __name__ == "__main__":
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-    if (DATA_NAME == "KorNLI"):
+    if (DATA_NAME == "kornli"):
+
+        if (os.path.exists('./multinli.train.ko.tsv') == False):
+            wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/multinli.train.ko.tsv")
+
+        if (os.path.exists('./snli_1.0_train.ko.tsv') == False):
+            wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/snli_1.0_train.ko.tsv")
+
+        if (os.path.exists('./xnli.dev.ko.tsv') == False):
+            wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/xnli.dev.ko.tsv")
+
+        if (os.path.exists('./xnli.test.ko.tsv') == False):
+            wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/xnli.test.ko.tsv")
         
         data_train_multinli = pd.read_csv("multinli.train.ko.tsv", sep='\t', on_bad_lines='skip')
         data_train_snli = pd.read_csv("snli_1.0_train.ko.tsv", sep='\t', on_bad_lines='skip')
@@ -156,7 +152,79 @@ if __name__ == "__main__":
         dev_dataset = Dataset.from_dict(data_dev)
         test_dataset = Dataset.from_dict(data_test)
 
-        data_nli = DatasetDict({"train": train_dataset, "dev": dev_dataset, "test": test_dataset})
+        data_nli = DatasetDict({"train": train_dataset, "validation": dev_dataset, "test": test_dataset})
+
+    elif (DATA_NAME == "idk-mrc-nli-drop"):
+        data_files = {"train": "data_nli_train_df_drop.csv", 
+                    "validation": "data_nli_val_df_drop.csv", 
+                    "test": "data_nli_test_df_drop.csv"}
+
+        dataset = load_dataset("muhammadravi251001/debug-entailment", data_files=data_files)
+
+        selected_columns = ["premise", "hypothesis", "label"]
+
+        df_train = pd.DataFrame(dataset["train"])
+        df_train = df_train[selected_columns]
+
+        df_val = pd.DataFrame(dataset["validation"])
+        df_val = df_val[selected_columns]
+
+        df_test = pd.DataFrame(dataset["test"])
+        df_test = df_test[selected_columns]
+
+        df_train['label'] = df_train['label'].replace(['entailment'], 0)
+        df_train['label'] = df_train['label'].replace(['contradiction'], 1)
+        df_train['label'] = df_train['label'].replace(['neutral'], 2)
+
+        df_val['label'] = df_val['label'].replace(['entailment'], 0)
+        df_val['label'] = df_val['label'].replace(['contradiction'], 1)
+        df_val['label'] = df_val['label'].replace(['neutral'], 2)
+
+        df_test['label'] = df_test['label'].replace(['entailment'], 0)
+        df_test['label'] = df_test['label'].replace(['contradiction'], 1)
+        df_test['label'] = df_test['label'].replace(['neutral'], 2)
+
+        train_dataset = Dataset.from_dict(df_train)
+        validation_dataset = Dataset.from_dict(df_val)
+        test_dataset = Dataset.from_dict(df_test)
+
+        data_nli = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
+
+    elif (DATA_NAME == "idk-mrc-nli-keep"):
+        data_files = {"train": "data_nli_train_df_keep.csv", 
+                    "validation": "data_nli_val_df_keep.csv", 
+                    "test": "data_nli_test_df_keep.csv"}
+
+        dataset = load_dataset("muhammadravi251001/debug-entailment", data_files=data_files)
+
+        selected_columns = ["premise", "hypothesis", "label"]
+
+        df_train = pd.DataFrame(dataset["train"])
+        df_train = df_train[selected_columns]
+
+        df_val = pd.DataFrame(dataset["validation"])
+        df_val = df_val[selected_columns]
+
+        df_test = pd.DataFrame(dataset["test"])
+        df_test = df_test[selected_columns]
+
+        df_train['label'] = df_train['label'].replace(['entailment'], 0)
+        df_train['label'] = df_train['label'].replace(['contradiction'], 1)
+        df_train['label'] = df_train['label'].replace(['neutral'], 2)
+
+        df_val['label'] = df_val['label'].replace(['entailment'], 0)
+        df_val['label'] = df_val['label'].replace(['contradiction'], 1)
+        df_val['label'] = df_val['label'].replace(['neutral'], 2)
+
+        df_test['label'] = df_test['label'].replace(['entailment'], 0)
+        df_test['label'] = df_test['label'].replace(['contradiction'], 1)
+        df_test['label'] = df_test['label'].replace(['neutral'], 2)
+
+        train_dataset = Dataset.from_dict(df_train)
+        validation_dataset = Dataset.from_dict(df_val)
+        test_dataset = Dataset.from_dict(df_test)
+
+        data_nli = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
 
     def preprocess_function_nli(examples, tokenizer, MAX_LENGTH):
 
@@ -190,7 +258,7 @@ if __name__ == "__main__":
         tokenized_data_nli.set_format("torch", columns=["input_ids", "token_type_ids"], output_all_columns=True, device=device)
     
     tokenized_data_nli_train = Dataset.from_dict(tokenized_data_nli["train"][:SAMPLE])
-    tokenized_data_nli_dev = Dataset.from_dict(tokenized_data_nli["dev"][:SAMPLE])
+    tokenized_data_nli_dev = Dataset.from_dict(tokenized_data_nli["validation"][:SAMPLE])
     tokenized_data_nli_test = Dataset.from_dict(tokenized_data_nli["test"][:SAMPLE])
 
     id2label = {0: 'entailment', 1: 'neutral', 2: 'contradiction'}
@@ -220,10 +288,10 @@ if __name__ == "__main__":
     TIME_NOW = str(datetime.now()).replace(":", "-").replace(" ", "_").replace(".", "_")
     
     if (re.findall(r'.*/(.*)$', MODEL_NAME) == []): 
-        NAME = f'KoreanNLI-{DATA_NAME}-with-{str(MODEL_NAME)}'
+        NAME = f'NLI-{DATA_NAME}-with-{str(MODEL_NAME)}'
     else:
         new_name = re.findall(r'.*/(.*)$', MODEL_NAME)[0]
-        NAME = f'KoreanNLI-{DATA_NAME}-with-{str(new_name)}'
+        NAME = f'NLI-{DATA_NAME}-with-{str(new_name)}'
     
     SC = f'./results/{NAME}-{TIME_NOW}'
     CHECKPOINT_DIR = f'{SC}/checkpoint/'
@@ -381,5 +449,5 @@ if __name__ == "__main__":
         path_in_repo="results/evaluation",
     )
 
-    print(f"Finish training Korean NLI with model: {MODEL_NAME}, data: {DATA_NAME}, epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, and token: {HUB_TOKEN}")
-    print("Finish Training Korean NLI!")
+    print(f"Finish training NLI model with model: {MODEL_NAME}, data: {DATA_NAME}, epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, and token: {HUB_TOKEN}")
+    print("Finish Training NLI model!")
