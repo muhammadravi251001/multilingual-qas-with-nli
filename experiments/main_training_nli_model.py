@@ -261,8 +261,8 @@ if __name__ == "__main__":
     tokenized_data_nli_dev = Dataset.from_dict(tokenized_data_nli["validation"][:SAMPLE])
     tokenized_data_nli_test = Dataset.from_dict(tokenized_data_nli["test"][:SAMPLE])
 
-    id2label = {0: 'entailment', 1: 'neutral', 2: 'contradiction'}
-    label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
+    id2label = {0: 'entailment', 1: 'contradiction', 2: 'neutral'}
+    label2id = {'entailment': 0, 'contradiction': 1, 'neutral': 2}
     
     accuracy = evaluate.load('accuracy')
     f1 = evaluate.load('f1')
@@ -306,7 +306,6 @@ if __name__ == "__main__":
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=True,
         save_strategy='steps',
-        save_total_limit=EPOCH,
         
         # Log
         report_to='tensorboard',
@@ -336,7 +335,7 @@ if __name__ == "__main__":
         load_best_model_at_end=True,
         metric_for_best_model='f1',
         save_total_limit=1,
-        resume_from_checkpoint=True
+        #resume_from_checkpoint=True
     )
 
     trainer_sc = Trainer(
@@ -350,7 +349,8 @@ if __name__ == "__main__":
         callbacks = [EarlyStoppingCallback(early_stopping_patience=3)]
     )
 
-    trainer_sc.train(resume_from_checkpoint=True)
+    #trainer_sc.train(resume_from_checkpoint=True)
+    trainer_sc.train()
 
     trainer_sc.save_model(MODEL_DIR)
 
@@ -403,13 +403,13 @@ if __name__ == "__main__":
             pred_label_array.append(predictions_idx[i])
             gold_label_array.append(label_array[i])
 
-        id2label = {0: 'entailment', 1: 'neutral', 2: 'contradiction'}
-
         nli_df = pd.DataFrame({'Premise': premise_array, 
                                 'Hypothesis': hypothesis_array,
                                 'Prediction Label': pred_label_array,
                                 'Gold Label': gold_label_array
                                 })
+        
+        id2label = {0: 'entailment', 1: 'contradiction', 2: 'neutral'}
 
         nli_df["Prediction Label"] = nli_df["Prediction Label"].map(id2label)
         nli_df["Gold Label"] = nli_df["Gold Label"].map(id2label)
