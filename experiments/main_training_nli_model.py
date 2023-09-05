@@ -36,6 +36,7 @@ if __name__ == "__main__":
 
     if HUB_TOKEN == "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": USER = "muhammadravi251001"
 
+    print("Training NLI model started")
     print(f"Start training NLI model with model: {MODEL_NAME}, data: {DATA_NAME}, epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, and token: {HUB_TOKEN}")
 
     MODEL_NAME = MODEL_NAME
@@ -306,6 +307,7 @@ if __name__ == "__main__":
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=True,
         save_strategy='steps',
+        save_total_limit=1,
         
         # Log
         report_to='tensorboard',
@@ -334,7 +336,6 @@ if __name__ == "__main__":
         hub_model_id=REPO_NAME,
         load_best_model_at_end=True,
         metric_for_best_model='f1',
-        save_total_limit=1,
         #resume_from_checkpoint=True
     )
 
