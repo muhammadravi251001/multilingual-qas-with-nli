@@ -12,7 +12,7 @@ parser.add_argument('-se', '--seed', type=int, metavar='', required=False, defau
 parser.add_argument('-bs', '--batch_size', type=int, metavar='', required=False, default=8)
 parser.add_argument('-ga', '--gradient_accumulation', type=int, metavar='', required=False, default=16)
 parser.add_argument('-t', '--token', type=str, metavar='', required=False, default="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")
-parser.add_argument('-wi', '--with_ittl', type=lambda x: bool(strtobool(x)), default=None)
+parser.add_argument('-wi', '--with_ittl', type=str, default=None)
 parser.add_argument('-fr', '--freeze', type=lambda x: bool(strtobool(x)), default=False)
 args = parser.parse_args()
 
@@ -49,10 +49,9 @@ if __name__ == "__main__":
     else:
         MODEL_SC_NAME = str(args.with_ittl)
 
-    print("Training QA model started")
-    print(f"Start training QAS model with model: {MODEL_NAME} dan data: {DATA_NAME}, dengan epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, freeze: {FREEZE}, model_sc: {MODEL_SC_NAME}, dan token: {HUB_TOKEN}")
+    print("Training QA model started!")
+    print(f"Start training QAS model with model: {MODEL_NAME} dan data: {DATA_NAME}, dengan epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, freeze: {FREEZE}, model_sc: {MODEL_SC_NAME}, and token: {HUB_TOKEN}")
 
-    # ## Mendefinisikan hyperparameter
     MODEL_NAME = MODEL_NAME
     EPOCH = EPOCH
     SAMPLE = SAMPLE
@@ -63,7 +62,6 @@ if __name__ == "__main__":
     GRADIENT_ACCUMULATION = GRADIENT_ACCUMULATION
 
     if HUB_TOKEN == "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": USER = "muhammadravi251001"
-    else: USER = "afaji"
     
     MODEL_NER_NAME = "cahya/xlm-roberta-base-indonesian-NER"
     MAX_LENGTH = 512
@@ -77,7 +75,6 @@ if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
-    # ## Import setiap library yang digunakan
     import transformers
     import evaluate
     import torch
@@ -119,10 +116,8 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # ## Gunakan tokenizer yang sudah pre-trained
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-    # ## Import dataset QAS
     if (DATA_NAME == "Squad-ID"):
         conhelps = NusantaraConfigHelper()
         data_qas_id = conhelps.filtered(lambda x: 'squad_id' in x.dataset_name)[0].load_dataset()
@@ -288,7 +283,6 @@ if __name__ == "__main__":
 
         data_qas_id = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
 
-    # ## Fungsi utilitas untuk pre-process dataset QAS
     def rindex(lst, value, operator=operator):
       return len(lst) - operator.indexOf(reversed(lst), value) - 1
 
@@ -367,7 +361,6 @@ if __name__ == "__main__":
         
         return tokenized_examples
 
-    # ## Melakukan tokenisasi data IndoNLI
     tokenized_data_qas_id = data_qas_id.map(
         preprocess_function_qa,
         batched=True,
@@ -390,8 +383,6 @@ if __name__ == "__main__":
     tokenized_data_qas_id_validation = Dataset.from_dict(tokenized_data_qas_id["validation"][:SAMPLE])
     tokenized_data_qas_id_test = Dataset.from_dict(tokenized_data_qas_id["test"][:SAMPLE])
 
-    # # Tahapan fine-tune dataset QAS diatas model
-    # ## Gunakan model Sequence Classification yang sudah pre-trained
     model_qa = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME, num_labels=2)
     model_qa = model_qa.to(device)
 
@@ -407,21 +398,18 @@ if __name__ == "__main__":
             MODEL_SC_NAME, num_labels=3, 
             id2label=id2label, label2id=label2id)
         
-        # Bagian transfer-learning-nya
+        # Transfer-learning section
         filtered_dict = {k: v for k, v in model_sc.state_dict().items() if k in model_qa.state_dict()}
         model_qa.state_dict().update(filtered_dict)
         model_qa.load_state_dict(model_qa.state_dict())
 
-    # ## Freeze BERT layer (opsional)
     if FREEZE == True:
         for name, param in model_qa.named_parameters():
             if 'qa_outputs' not in name:
                 param._trainable = False
     
-    # ## Melakukan pengumpulan data dengan padding
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
-    # # Melakukan evaluasi dari prediksi
     def normalize_text(s):
         def remove_articles(text):
             regex = re.compile(r"\b(a|an|the)\b", re.UNICODE)
@@ -492,26 +480,23 @@ if __name__ == "__main__":
 
         return {'exact_match': exact_match, 'f1': final_f1}
 
-    # ## Mendefinisikan argumen (dataops) untuk training nanti
     TIME_NOW = str(datetime.now()).replace(":", "-").replace(" ", "_").replace(".", "_")
     
     if (re.findall(r'.*/(.*)$', MODEL_NAME) == []): 
-        NAME = f'DatasetQAS-{DATA_NAME}-with-{str(MODEL_NAME)}'
+        NAME = f'QAS-{DATA_NAME}-with-{str(MODEL_NAME)}'
     else:
         new_name = re.findall(r'.*/(.*)$', MODEL_NAME)[0]
-        NAME = f'DatasetQAS-{DATA_NAME}-with-{str(new_name)}'
+        NAME = f'QAS-{DATA_NAME}-with-{str(new_name)}'
     
     if MODEL_SC_NAME == None:
-        NAME = f'{NAME}-without-ITTL'
+        NAME = f'{NAME}'
     else:
-        NAME = f'{NAME}-with-ITTL'
+        NAME = f'{NAME}-ITTL'
 
     if FREEZE == True:
-        NAME = f'{NAME}-with-freeze'
+        NAME = f'{NAME}-freeze'
     else:
-        NAME = f'{NAME}-without-freeze'
-    
-    NAME = f'{NAME}-LR-{LEARNING_RATE}'
+        NAME = f'{NAME}'
     
     QA = f'./results/{NAME}-{TIME_NOW}'
     CHECKPOINT_DIR = f'{QA}/checkpoint/'
@@ -558,7 +543,6 @@ if __name__ == "__main__":
         metric_for_best_model='f1',
     )
 
-    # ## Mulai training question answering task
     trainer_qa = Trainer(
         model=model_qa,
         args=training_args_qa,
@@ -575,10 +559,8 @@ if __name__ == "__main__":
 
     trainer_qa.train()
 
-    # ## Simpan model Question Answering
     trainer_qa.save_model(MODEL_DIR)
 
-    # ## Assign answer type untuk evaluasi nanti
     nlp_ner = pipeline(task="ner", model=MODEL_NER_NAME, 
                        tokenizer=MODEL_NER_NAME)
 
@@ -599,7 +581,6 @@ if __name__ == "__main__":
 
         return list(set(entity_array))
 
-    # ## Method untuk melihat isi PredictionOutput
     def represent_prediction_output(predict_result, assign_answer_types=assign_answer_types):
         
         predictions_idx = np.argmax(predict_result.predictions, axis=2)
@@ -1079,7 +1060,6 @@ if __name__ == "__main__":
         
         return qas_df
 
-    # # Melakukan prediksi dari model
     predict_result = trainer_qa.predict(tokenized_data_qas_id_test)
     os.makedirs(os.path.dirname(OUTPUT_DIR), exist_ok=True)
     with open(f'{OUTPUT_DIR}/output.txt', "w") as f:
@@ -1089,7 +1069,6 @@ if __name__ == "__main__":
     qas_df = represent_prediction_output(predict_result)
     qas_df.to_csv(f'{OUTPUT_DIR}/output_df.csv')
 
-    ## Evaluasi umum yang berhubungan dengan EDA
     def general_evaluation(df):
     
         num_apa_right = 0
@@ -1208,7 +1187,6 @@ if __name__ == "__main__":
 
         NUM_REASONING_TYPE_ANNOTATED = 100
 
-        # Cek semua properti EDA, yang berhasil berapa, yang gagal berapa?
         for i in range(len(df)):
 
             pred_answer = df["Prediction Answer"][i]      
@@ -1654,7 +1632,6 @@ if __name__ == "__main__":
         f.write(str(metric_result))
         f.close()
     
-    # # Upload folder ke Hugging Face
     api = HfApi()
 
     api.upload_folder(
@@ -1673,5 +1650,5 @@ if __name__ == "__main__":
         path_in_repo="results/evaluation",
     )
     
-    print(f"Finish training QAS model with model: {MODEL_NAME} dan data: {DATA_NAME}, dengan epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, freeze: {FREEZE}, model_sc: {MODEL_SC_NAME}, dan token: {HUB_TOKEN}")
+    print(f"Finish training QAS model with model: {MODEL_NAME} dan data: {DATA_NAME}, dengan epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, freeze: {FREEZE}, model_sc: {MODEL_SC_NAME}, and token: {HUB_TOKEN}")
     print("Finish Training QAS model!")

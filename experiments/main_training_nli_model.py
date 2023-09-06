@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     if HUB_TOKEN == "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": USER = "muhammadravi251001"
 
-    print("Training NLI model started")
+    print("Training NLI model started!")
     print(f"Start training NLI model with model: {MODEL_NAME}, data: {DATA_NAME}, epoch: {EPOCH}, sample: {SAMPLE}, LR: {LEARNING_RATE}, seed: {SEED}, batch_size: {BATCH_SIZE}, gradient_accumulation: {GRADIENT_ACCUMULATION}, and token: {HUB_TOKEN}")
 
     MODEL_NAME = MODEL_NAME
