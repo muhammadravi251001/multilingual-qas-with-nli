@@ -93,6 +93,9 @@ if __name__ == "__main__":
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
+    id2label = {0: 'entailment', 1: 'neutral', 2: 'contradiction'}
+    label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
+
     if (DATA_NAME == "kornli"):
 
         if (os.path.exists('./multinli.train.ko.tsv') == False):
@@ -107,122 +110,66 @@ if __name__ == "__main__":
         if (os.path.exists('./xnli.test.ko.tsv') == False):
             wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/xnli.test.ko.tsv")
         
-        data_train_multinli = pd.read_csv("multinli.train.ko.tsv", sep='\t', on_bad_lines='skip')
-        data_train_snli = pd.read_csv("snli_1.0_train.ko.tsv", sep='\t', on_bad_lines='skip')
-        data_dev = pd.read_csv("xnli.dev.ko.tsv", sep='\t', on_bad_lines='skip')
-        data_test = pd.read_csv("xnli.test.ko.tsv", sep='\t', on_bad_lines='skip')
+        df_train_multinli = pd.read_csv("multinli.train.ko.tsv", sep='\t', on_bad_lines='skip')
+        df_train_snli = pd.read_csv("snli_1.0_train.ko.tsv", sep='\t', on_bad_lines='skip')
+        df_validation = pd.read_csv("xnli.dev.ko.tsv", sep='\t', on_bad_lines='skip')
+        df_test = pd.read_csv("xnli.test.ko.tsv", sep='\t', on_bad_lines='skip')
 
-        data_train = pd.concat([data_train_multinli, data_train_snli], axis=0, ignore_index=True)
+        df_train = pd.concat([df_train_multinli, df_train_snli], axis=0, ignore_index=True)
 
-        data_train = data_train[['sentence1', 'sentence2', 'gold_label']]
-        data_train = data_train.rename(columns={'sentence1': 'premise', 
+        df_train = df_train[['sentence1', 'sentence2', 'gold_label']]
+        df_train = df_train.rename(columns={'sentence1': 'premise', 
                                                 'sentence2': 'hypothesis', 
                                                 'gold_label': 'label'})
 
-        data_dev = data_dev[['sentence1', 'sentence2', 'gold_label']]
-        data_dev = data_dev.rename(columns={'sentence1': 'premise', 
+        df_validation = df_validation[['sentence1', 'sentence2', 'gold_label']]
+        df_validation = df_validation.rename(columns={'sentence1': 'premise', 
                                             'sentence2': 'hypothesis', 
                                             'gold_label': 'label'})
 
-        data_test = data_test[['sentence1', 'sentence2', 'gold_label']]
-        data_test = data_test.rename(columns={'sentence1': 'premise', 
+        df_test = df_test[['sentence1', 'sentence2', 'gold_label']]
+        df_test = df_test.rename(columns={'sentence1': 'premise', 
                                               'sentence2': 'hypothesis', 
                                               'gold_label': 'label'})
 
-        data_train['label'] = data_train['label'].replace(['entailment'], 0)
-        data_train['label'] = data_train['label'].replace(['contradiction'], 1)
-        data_train['label'] = data_train['label'].replace(['neutral'], 2)
+        df_train = df_train.dropna()
+        df_validation = df_validation.dropna()
+        df_test = df_test.dropna()
 
-        data_dev['label'] = data_dev['label'].replace(['entailment'], 0)
-        data_dev['label'] = data_dev['label'].replace(['contradiction'], 1)
-        data_dev['label'] = data_dev['label'].replace(['neutral'], 2)
-
-        data_test['label'] = data_test['label'].replace(['entailment'], 0)
-        data_test['label'] = data_test['label'].replace(['contradiction'], 1)
-        data_test['label'] = data_test['label'].replace(['neutral'], 2)
-
-        data_train = data_train.dropna()
-        data_dev = data_dev.dropna()
-        data_test = data_test.dropna()
-
-        data_train['label'] = data_train['label'].astype('int')
-        data_dev['label'] = data_dev['label'].astype('int')
-        data_test['label'] = data_test['label'].astype('int')
-
-        train_dataset = Dataset.from_dict(data_train)
-        dev_dataset = Dataset.from_dict(data_dev)
-        test_dataset = Dataset.from_dict(data_test)
-
-        data_nli = DatasetDict({"train": train_dataset, "validation": dev_dataset, "test": test_dataset})
-
-    elif (DATA_NAME == "idk-mrc-nli-drop"):
-        data_files = {"train": "data_nli_train_df_drop.csv", 
-                    "validation": "data_nli_val_df_drop.csv", 
-                    "test": "data_nli_test_df_drop.csv"}
-
-        dataset = load_dataset("muhammadravi251001/debug-entailment", data_files=data_files)
-
-        selected_columns = ["premise", "hypothesis", "label"]
-
-        df_train = pd.DataFrame(dataset["train"])
-        df_train = df_train[selected_columns]
-
-        df_val = pd.DataFrame(dataset["validation"])
-        df_val = df_val[selected_columns]
-
-        df_test = pd.DataFrame(dataset["test"])
-        df_test = df_test[selected_columns]
-
-        df_train['label'] = df_train['label'].replace(['entailment'], 0)
-        df_train['label'] = df_train['label'].replace(['contradiction'], 1)
-        df_train['label'] = df_train['label'].replace(['neutral'], 2)
-
-        df_val['label'] = df_val['label'].replace(['entailment'], 0)
-        df_val['label'] = df_val['label'].replace(['contradiction'], 1)
-        df_val['label'] = df_val['label'].replace(['neutral'], 2)
-
-        df_test['label'] = df_test['label'].replace(['entailment'], 0)
-        df_test['label'] = df_test['label'].replace(['contradiction'], 1)
-        df_test['label'] = df_test['label'].replace(['neutral'], 2)
+        df_train['label'] = df_train['label'].replace(label2id).astype('int')
+        df_validation['label'] = df_validation['label'].replace(label2id).astype('int')
+        df_test['label'] = df_test['label'].replace(label2id).astype('int')
 
         train_dataset = Dataset.from_dict(df_train)
-        validation_dataset = Dataset.from_dict(df_val)
+        validation_dataset = Dataset.from_dict(df_validation)
         test_dataset = Dataset.from_dict(df_test)
 
         data_nli = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
 
-    elif (DATA_NAME == "idk-mrc-nli-keep"):
-        data_files = {"train": "data_nli_train_df_keep.csv", 
-                    "validation": "data_nli_val_df_keep.csv", 
-                    "test": "data_nli_test_df_keep.csv"}
+    elif (DATA_NAME == "multilingual"):
+        data_files = {"train": "multilingual_nli_train_df.csv", 
+                    "validation": "multilingual_nli_validation_df.csv", 
+                    "test": "multilingual_nli_test_df.csv"}
 
-        dataset = load_dataset("muhammadravi251001/debug-entailment", data_files=data_files)
+        dataset = load_dataset("muhammadravi251001/multilingual-nli-dataset", data_files=data_files)
 
         selected_columns = ["premise", "hypothesis", "label"]
 
         df_train = pd.DataFrame(dataset["train"])
         df_train = df_train[selected_columns]
 
-        df_val = pd.DataFrame(dataset["validation"])
-        df_val = df_val[selected_columns]
+        df_validation = pd.DataFrame(dataset["validation"])
+        df_validation = df_validation[selected_columns]
 
         df_test = pd.DataFrame(dataset["test"])
         df_test = df_test[selected_columns]
 
-        df_train['label'] = df_train['label'].replace(['entailment'], 0)
-        df_train['label'] = df_train['label'].replace(['contradiction'], 1)
-        df_train['label'] = df_train['label'].replace(['neutral'], 2)
-
-        df_val['label'] = df_val['label'].replace(['entailment'], 0)
-        df_val['label'] = df_val['label'].replace(['contradiction'], 1)
-        df_val['label'] = df_val['label'].replace(['neutral'], 2)
-
-        df_test['label'] = df_test['label'].replace(['entailment'], 0)
-        df_test['label'] = df_test['label'].replace(['contradiction'], 1)
-        df_test['label'] = df_test['label'].replace(['neutral'], 2)
+        df_train['label'] = df_train['label'].replace(label2id).astype('int')
+        df_validation['label'] = df_validation['label'].replace(label2id).astype('int')
+        df_test['label'] = df_test['label'].replace(label2id).astype('int')
 
         train_dataset = Dataset.from_dict(df_train)
-        validation_dataset = Dataset.from_dict(df_val)
+        validation_dataset = Dataset.from_dict(df_validation)
         test_dataset = Dataset.from_dict(df_test)
 
         data_nli = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
@@ -261,9 +208,6 @@ if __name__ == "__main__":
     tokenized_data_nli_train = Dataset.from_dict(tokenized_data_nli["train"][:SAMPLE])
     tokenized_data_nli_dev = Dataset.from_dict(tokenized_data_nli["validation"][:SAMPLE])
     tokenized_data_nli_test = Dataset.from_dict(tokenized_data_nli["test"][:SAMPLE])
-
-    id2label = {0: 'entailment', 1: 'contradiction', 2: 'neutral'}
-    label2id = {'entailment': 0, 'contradiction': 1, 'neutral': 2}
     
     accuracy = evaluate.load('accuracy')
     f1 = evaluate.load('f1')
