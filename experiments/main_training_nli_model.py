@@ -299,7 +299,7 @@ if __name__ == "__main__":
 
     trainer_sc.save_model(MODEL_DIR)
 
-    def represent_prediction_output(predict_result):
+    def represent_prediction_output(predict_result, id2label=id2label):
         predictions_idx = np.argmax(predict_result.predictions, axis=1)
         label_array = np.asarray(predict_result.label_ids)
 
@@ -353,8 +353,6 @@ if __name__ == "__main__":
                                 'Prediction Label': pred_label_array,
                                 'Gold Label': gold_label_array
                                 })
-        
-        id2label = {0: 'entailment', 1: 'contradiction', 2: 'neutral'}
 
         nli_df["Prediction Label"] = nli_df["Prediction Label"].map(id2label)
         nli_df["Gold Label"] = nli_df["Gold Label"].map(id2label)
