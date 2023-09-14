@@ -96,6 +96,16 @@ if __name__ == "__main__":
     id2label = {0: 'entailment', 1: 'neutral', 2: 'contradiction'}
     label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
 
+    def remove_none_type(data):
+        for i in tqdm(range(len(data))):
+            premise_type = type(data['premise'][i])
+            hypothesis_type = type(data['hypothesis'][i])
+            label_type = type(data['label'][i])
+            if premise_type != str or hypothesis_type != str or label_type != str:
+                data.drop(i, inplace=True)
+                data.reset_index(drop=True) 
+        return data
+
     if (DATA_NAME == "kornli"):
 
         if (os.path.exists('./multinli.train.ko.tsv') == False):
@@ -167,6 +177,10 @@ if __name__ == "__main__":
         df_train['label'] = df_train['label'].replace(label2id).astype('int')
         df_validation['label'] = df_validation['label'].replace(label2id).astype('int')
         df_test['label'] = df_test['label'].replace(label2id).astype('int')
+
+        df_train = remove_none_type(df_train)
+        df_validation = remove_none_type(df_validation)
+        df_test = remove_none_type(df_test)
 
         train_dataset = Dataset.from_dict(df_train)
         validation_dataset = Dataset.from_dict(df_validation)
