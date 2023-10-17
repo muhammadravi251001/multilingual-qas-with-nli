@@ -3,32 +3,38 @@
 
 # # Define tool and model of the tool
 
-# In[209]:
+# In[1]:
 
 
-get_ipython().system('nvidia-smi')
+# get_ipython().system('nvidia-smi')
 
 
 # Below, it is some settings to run in my local.
 
-# In[210]:
+# In[2]:
 
 
 import os, torch
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+import argparse
+import sys
+
+parser = argparse.ArgumentParser(description="Program untuk fine-tuning dataset QA")
+parser.add_argument('-d', '--data_name', type=str, metavar='', required=True)
+args = parser.parse_args()
 
 # You can tweak your settings too in code below.
 
-# In[211]:
+# In[3]:
 
 
 import sys
 
-NAME = "idk-mrc"
+DATA_NAME = args.data_name
 NO_ANSWER_STATEMENT = "Tidak ada jawaban"
 
 TASK_NER_NAME = "ner"
@@ -46,13 +52,13 @@ MODEL_PARAPHRASER_NAME = ""
 # Uncomment sys.maxsize to create all of the data, 
 # else if you want to debugging
 
-# SAMPLE = sys.maxsize
-SAMPLE = 250
+SAMPLE = sys.maxsize
+# SAMPLE = 150
 
 
 # # Import anything
 
-# In[212]:
+# In[4]:
 
 
 import transformers
@@ -102,95 +108,187 @@ from transformers import (
 
 # # Retrieve QA dataset
 
-# In[213]:
+# In[5]:
 
 
 print("PROGRAM STARTED")
 
 
-# In[214]:
+# In[6]:
 
 
-conhelps = NusantaraConfigHelper()
-data_qas = conhelps.filtered(lambda x: 'idk_mrc' in x.dataset_name)[0].load_dataset()
+if (DATA_NAME == "squad-id"):
+    conhelps = NusantaraConfigHelper()
+    data_qas_id = conhelps.filtered(lambda x: 'squad_id' in x.dataset_name)[0].load_dataset()
 
-df_train = pd.DataFrame(data_qas['train'])
-df_validation = pd.DataFrame(data_qas['validation'])
-df_test = pd.DataFrame(data_qas['test'])
+    df_train = pd.DataFrame(data_qas_id['train'])
+    df_test = pd.DataFrame(data_qas_id['validation'])
 
-cols = ['context', 'question', 'answer']
-new_df_train = pd.DataFrame(columns=cols)
+    cols = ['context', 'question', 'answer']
+    new_df_test = pd.DataFrame(columns=cols)
 
-for i in tqdm(range(len(df_train['context']))):
-    for j in df_train["qas"][i]:
-        if len(j['answers']) != 0:
-            new_df_train = new_df_train.append({'context': df_train["context"][i], 
+    for i in tqdm(range(len(df_test['context']))):
+        new_df_test = new_df_test.append({'context': df_test["context"][i], 
+                                        'question': df_test["question"][i], 
+                                        'answer': {"text": eval(df_test["answer"][i][0])['text'], 
+                                        "answer_start": eval(df_test["answer"][i][0])['answer_start'], 
+                                        "answer_end": eval(df_test["answer"][i][0])['answer_end']}}, 
+                                    ignore_index=True)
+
+    cols = ['context', 'question', 'answer']
+    new_df_train = pd.DataFrame(columns=cols)
+
+    for i in tqdm(range(len(df_train['context']))):
+        new_df_train = new_df_train.append({'context': df_train["context"][i], 
+                                        'question': df_train["question"][i], 
+                                        'answer': {"text": eval(df_train["answer"][i][0])['text'], 
+                                        "answer_start": eval(df_train["answer"][i][0])['answer_start'], 
+                                        "answer_end": eval(df_train["answer"][i][0])['answer_end']}}, 
+                                    ignore_index=True)
+
+    train_final_df = new_df_train[:-11874]
+    validation_final_df = new_df_train[-11874:]
+
+    train_dataset = Dataset.from_dict(train_final_df)
+    validation_dataset = Dataset.from_dict(validation_final_df)
+    test_dataset = Dataset.from_dict(new_df_test)
+
+    data_qas = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
+
+elif (DATA_NAME == "idk-mrc"):
+    conhelps = NusantaraConfigHelper()
+    data_qas_id = conhelps.filtered(lambda x: 'idk_mrc' in x.dataset_name)[0].load_dataset()
+
+    df_train = pd.DataFrame(data_qas_id['train'])
+    df_validation = pd.DataFrame(data_qas_id['validation'])
+    df_test = pd.DataFrame(data_qas_id['test'])
+
+    cols = ['context', 'question', 'answer']
+    new_df_train = pd.DataFrame(columns=cols)
+
+    for i in tqdm(range(len(df_train['context']))):
+        for j in df_train["qas"][i]:
+            if len(j['answers']) != 0:
+                new_df_train = new_df_train.append({'context': df_train["context"][i], 
+                                                    'question': j['question'], 
+                                                    'answer': {"text": j['answers'][0]['text'], 
+                                                               "answer_start": j['answers'][0]['answer_start'], 
+                                                               "answer_end": j['answers'][0]['answer_start'] + len(j['answers'][0]['text'])}}, 
+                                                               ignore_index=True)
+            else:
+                new_df_train = new_df_train.append({'context': df_train["context"][i], 
+                                                    'question': j['question'], 
+                                                    'answer': {"text": str(), 
+                                                               "answer_start": 0, 
+                                                               "answer_end": 0}}, 
+                                                               ignore_index=True)
+
+    cols = ['context', 'question', 'answer']
+    new_df_val = pd.DataFrame(columns=cols)
+
+    for i in tqdm(range(len(df_validation['context']))):
+        for j in df_validation["qas"][i]:
+            if len(j['answers']) != 0:
+                new_df_val = new_df_val.append({'context': df_validation["context"][i], 
                                                 'question': j['question'], 
                                                 'answer': {"text": j['answers'][0]['text'], 
                                                            "answer_start": j['answers'][0]['answer_start'], 
                                                            "answer_end": j['answers'][0]['answer_start'] + len(j['answers'][0]['text'])}}, 
                                                            ignore_index=True)
-        else:
-            new_df_train = new_df_train.append({'context': df_train["context"][i], 
+            else:
+                new_df_val = new_df_val.append({'context': df_validation["context"][i], 
+                                                'question': j['question'], 
+                                                'answer': {"text": str(), 
+                                                           "answer_start": 0, 
+                                                           "answer_end": 0}}, 
+                                                           ignore_index=True)        
+
+    cols = ['context', 'question', 'answer']
+    new_df_test = pd.DataFrame(columns=cols)
+
+    for i in tqdm(range(len(df_test['context']))):
+        for j in df_test["qas"][i]:
+            if len(j['answers']) != 0:
+                new_df_test = new_df_test.append({'context': df_test["context"][i], 
+                                                'question': j['question'], 
+                                                'answer': {"text": j['answers'][0]['text'], 
+                                                           "answer_start": j['answers'][0]['answer_start'], 
+                                                           "answer_end": j['answers'][0]['answer_start'] + len(j['answers'][0]['text'])}}, 
+                                                           ignore_index=True)
+            else:
+                new_df_test = new_df_test.append({'context': df_test["context"][i], 
                                                 'question': j['question'], 
                                                 'answer': {"text": str(), 
                                                            "answer_start": 0, 
                                                            "answer_end": 0}}, 
                                                            ignore_index=True)
 
-cols = ['context', 'question', 'answer']
-new_df_val = pd.DataFrame(columns=cols)
+    train_dataset = Dataset.from_dict(new_df_train)
+    validation_dataset = Dataset.from_dict(new_df_val)
+    test_dataset = Dataset.from_dict(new_df_test)
 
-for i in tqdm(range(len(df_validation['context']))):
-    for j in df_validation["qas"][i]:
-        if len(j['answers']) != 0:
-            new_df_val = new_df_val.append({'context': df_validation["context"][i], 
-                                            'question': j['question'], 
-                                            'answer': {"text": j['answers'][0]['text'], 
-                                                       "answer_start": j['answers'][0]['answer_start'], 
-                                                       "answer_end": j['answers'][0]['answer_start'] + len(j['answers'][0]['text'])}}, 
-                                                       ignore_index=True)
-        else:
-            new_df_val = new_df_val.append({'context': df_validation["context"][i], 
-                                            'question': j['question'], 
-                                            'answer': {"text": str(), 
-                                                       "answer_start": 0, 
-                                                       "answer_end": 0}}, 
-                                                       ignore_index=True)        
+    data_qas = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
 
-cols = ['context', 'question', 'answer']
-new_df_test = pd.DataFrame(columns=cols)
+elif (DATA_NAME == "tydi-qa-id"):
+    conhelps = NusantaraConfigHelper()
+    data_qas_id = conhelps.filtered(lambda x: 'tydiqa_id' in x.dataset_name)[0].load_dataset()
 
-for i in tqdm(range(len(df_test['context']))):
-    for j in df_test["qas"][i]:
-        if len(j['answers']) != 0:
-            new_df_test = new_df_test.append({'context': df_test["context"][i], 
-                                            'question': j['question'], 
-                                            'answer': {"text": j['answers'][0]['text'], 
-                                                       "answer_start": j['answers'][0]['answer_start'], 
-                                                       "answer_end": j['answers'][0]['answer_start'] + len(j['answers'][0]['text'])}}, 
-                                                       ignore_index=True)
-        else:
-            new_df_test = new_df_test.append({'context': df_test["context"][i], 
-                                            'question': j['question'], 
-                                            'answer': {"text": str(), 
-                                                       "answer_start": 0, 
-                                                       "answer_end": 0}}, 
+    df_train = pd.DataFrame(data_qas_id['train'])
+    df_validation = pd.DataFrame(data_qas_id['validation'])
+    df_test = pd.DataFrame(data_qas_id['test'])
+
+    cols = ['context', 'question', 'answer']
+    new_df_train = pd.DataFrame(columns=cols)
+
+    for i in range(len(df_train['context'])):
+        answer_start = df_train['context'][i].index(df_train['label'][i])
+        answer_end = answer_start + len(df_train['label'][i])
+        new_df_train = new_df_train.append({'context': df_train["context"][i], 
+                                            'question': df_train["question"][i], 
+                                            'answer': {"text": df_train["label"][i], 
+                                                       "answer_start": answer_start, 
+                                                       "answer_end": answer_end}}, 
                                                        ignore_index=True)
 
-train_dataset = Dataset.from_dict(new_df_train)
-validation_dataset = Dataset.from_dict(new_df_val)
-test_dataset = Dataset.from_dict(new_df_test)
+    cols = ['context', 'question', 'answer']
+    new_df_val = pd.DataFrame(columns=cols)    
 
-data_qas = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
-data_qas
+    for i in range(len(df_validation['context'])):
+        answer_start = df_validation['context'][i].index(df_validation['label'][i])
+        answer_end = answer_start + len(df_validation['label'][i])
+        new_df_val = new_df_val.append({'context': df_validation["context"][i], 
+                                        'question': df_validation["question"][i], 
+                                        'answer': {"text": df_validation["label"][i], 
+                                                   "answer_start": answer_start, 
+                                                   "answer_end": answer_end}}, 
+                                                   ignore_index=True)    
+
+    cols = ['context', 'question', 'answer']
+    new_df_test = pd.DataFrame(columns=cols)
+
+    for i in range(len(df_test['context'])):
+        answer_start = df_test['context'][i].index(df_test['label'][i])
+        answer_end = answer_start + len(df_test['label'][i])
+        new_df_test = new_df_test.append({'context': df_test["context"][i], 
+                                        'question': df_test["question"][i], 
+                                        'answer': {"text": df_test["label"][i], 
+                                                   "answer_start": answer_start, 
+                                                   "answer_end": answer_end}}, 
+                                                   ignore_index=True)
+
+    train_dataset = Dataset.from_dict(new_df_train)
+    validation_dataset = Dataset.from_dict(new_df_val)
+    test_dataset = Dataset.from_dict(new_df_test)
+
+    data_qas = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
+
 
 
 # # Convert to NLI, with hypothesis being just do concat question & answer
 
 # ## Convert Dataset to DataFrame format
 
-# In[215]:
+# In[7]:
 
 
 # 42, the answer to life the universe and everything
@@ -199,7 +297,7 @@ seed_value = 42
 random.seed(seed_value)
 
 
-# In[216]:
+# In[8]:
 
 
 # If you want to training all of the data (prod),
@@ -224,7 +322,7 @@ else:
 
 # ## Retrieve answer text only
 
-# In[217]:
+# In[9]:
 
 
 # Only retrieve answer text
@@ -237,7 +335,7 @@ def retrieve_answer_text(data):
     return data
 
 
-# In[218]:
+# In[10]:
 
 
 data_qas_train_df = retrieve_answer_text(data_qas_train_df)
@@ -247,7 +345,7 @@ data_qas_test_df = retrieve_answer_text(data_qas_test_df)
 
 # ## Create NLI dataset from copy of QA dataset above
 
-# In[219]:
+# In[11]:
 
 
 data_nli_train_df = data_qas_train_df.copy()
@@ -255,23 +353,23 @@ data_nli_val_df = data_qas_val_df.copy()
 data_nli_test_df = data_qas_test_df.copy()
 
 
-# In[220]:
+# In[12]:
 
 
 data_qas_train_df
 
 
-# In[1570]:
+# In[298]:
 
 
 data = {
-    'context': ["Baudouin adalah putra Eustace II, Comte Boulogne dan Ide dari Lorraine (putri Godefroy III, Adipati Lorraine Hilir), dan adik Eustace III, Comte Boulogne dan Godefroy dari Bouillon. Sebagai saudara bungsu, Baudouin awalnya ditujukan untuk berkarier di gereja, namun ia menyerah pada sekitar tahun 1080; menurut Willelmus dari Tirus, yang hidup pada abad ke-12 dan tidak mengenal Baudouin secara pribadi: \"di masa mudanya, Baudouin juga memelihara seni liberal. Ia menjadi seorang ulama, dikatakan, dan karena keturunannya yang terkenal, memiliki manfaat yang biasa disebut prebend di gereja-gereja di Reims, Cambrai, dan Liège.\" Setelah itu ia tinggal di Normandia, di mana ia menikahi Godehilde (atau Godvera) de Toeni, putri Raoul de Conches dari keluarga bangsawan Anglo-Norman (dan sebelumnya bertunangan dengan istri Robert de Beaumont). Ia kembali ke Lorraine Hilir dalam rangka untuk mengendalikan kadipaten Verdun (yang sebelumnya dipegang oleh Godefroy)."],
-    'question': ["Siapa ibu Baudouin I ?"],
-    'answer': ["Ide dari Lorraine"]
+    'context': ["Inferno adalah film Amerika Serikat bergenre thriller yang disutradarai oleh Ron Howard, berdsarkan skenario yang ditulis oleh David Koepp. Film ini diangkat dari novel berjudul sama yang ditulis oleh Dan Brown (2013). Inferno melibatkan Tom Hanks, yang tampil kembali memerankan sebagai Robert Langdon dari The Da Vinci Code dan Angels & Demons, didukung beberapa bintang antara lain Felicity Jones, Omar Sy, Sidse Babett Knudsen, Ben Foster, dan Irrfan Khan. Proses produksi dimulai 27 April 2015 di Venice, Italia, dan selesai pada 21 Juli 2015. Menurut rencana, film Inferno akan dirilis pada 14 Oktober 2016."],
+    'question': ["Kapan film Inferno rilis ?"],
+    'answer': ["14 Oktober 2016"]
 }
 
 
-# In[1571]:
+# In[299]:
 
 
 #data_debug = pd.DataFrame(data)
@@ -280,7 +378,7 @@ data = {
 
 # ## Convert context pair to premise (only renaming column)
 
-# In[1572]:
+# In[300]:
 
 
 # Renaming it, just for consistency
@@ -290,7 +388,7 @@ data_nli_val_df = data_nli_val_df.rename(columns={"context": "premise"})
 data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
 
-# In[1573]:
+# In[301]:
 
 
 #data_debug = data_debug.rename(columns={"context": "premise"})
@@ -300,7 +398,7 @@ data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
 # ## Import pipeline to create contradiction cases
 
-# In[1574]:
+# In[302]:
 
 
 nlp_tools_ner = pipeline(task = TASK_NER_NAME, 
@@ -311,7 +409,7 @@ nlp_tools_ner = pipeline(task = TASK_NER_NAME,
                      aggregation_strategy = 'simple')
 
 
-# In[1575]:
+# In[303]:
 
 
 nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME, 
@@ -324,7 +422,7 @@ nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME,
 
 # ## Add NER and chunking tag column in DataFrame
 
-# In[1576]:
+# In[304]:
 
 
 # This code useful for cleaning the data (text)
@@ -335,7 +433,7 @@ def remove_space_after_number_and_punctuation(text):
     return cleaned_text
 
 
-# In[1577]:
+# In[305]:
 
 
 # This code useful for tagging the entire premise
@@ -359,7 +457,7 @@ def add_premise_tag(data, tag, index, premise_array, ner=nlp_tools_ner, chunking
     return premise_array
 
 
-# In[1578]:
+# In[306]:
 
 
 # Function for clean the text off punctuation
@@ -370,7 +468,7 @@ def remove_punctuation(text):
     return cleaned_text
 
 
-# In[1579]:
+# In[307]:
 
 
 # This code useful for tagging the entire answer
@@ -470,7 +568,7 @@ def add_answer_tag(answer, tag, premise_array, ner=nlp_tools_ner, chunking=nlp_t
     return tag_answer_list
 
 
-# In[1580]:
+# In[308]:
 
 
 # This is a helper code to run
@@ -502,7 +600,7 @@ def add_ner_and_chunking_all_tag(data):
     return data
 
 
-# In[1581]:
+# In[309]:
 
 
 data_nli_train_df = add_ner_and_chunking_all_tag(data_nli_train_df)
@@ -510,7 +608,7 @@ data_nli_val_df = add_ner_and_chunking_all_tag(data_nli_val_df)
 data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 
-# In[1582]:
+# In[310]:
 
 
 #data_debug = add_ner_and_chunking_all_tag(data_debug)
@@ -519,7 +617,7 @@ data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 # # Create wrong answer
 
-# In[1583]:
+# In[311]:
 
 
 # This function useful for sorting the closest distance
@@ -531,8 +629,8 @@ def return_similarity_sorted_array(right_answer, sentence_array, model=model_sim
     
     right_answer = right_answer.lower()
     
-    embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device)
-    embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device)
+    embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device),
+    embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device),
     
     # Using cosine scores to calculate
     cosine_scores = util.pytorch_cos_sim(embedding_right_answer, embedding_sentence_array)
@@ -543,7 +641,7 @@ def return_similarity_sorted_array(right_answer, sentence_array, model=model_sim
     return sorted_array
 
 
-# In[1584]:
+# In[312]:
 
 
 # This function useful for
@@ -556,7 +654,7 @@ def remove_values_with_hash(arr):
     return [item for item in arr if "#" not in item]
 
 
-# In[1585]:
+# In[313]:
 
 
 # Retrieve stopword from all language
@@ -571,7 +669,7 @@ else:
 stopword_data = set([item for sublist in list(stopword_data.values()) for item in sublist])
 
 
-# In[1586]:
+# In[314]:
 
 
 # This function just retrieve random word
@@ -602,7 +700,7 @@ def select_random_word(text, answer, stopword_data=stopword_data):
     return random_word.strip()
 
 
-# In[1587]:
+# In[315]:
 
 
 # This function useful for find the same order
@@ -618,9 +716,12 @@ def find_order(premise, answer):
     i = 0
     
     while i < len(premise):
+        
         if premise[i][0] == answer_labels[0]:
-            j = 0
+            
             matching_words = []
+            
+            j = 0
             
             while i + j < len(premise) and j < len(answer_labels) and premise[i + j][0] == answer_labels[j]:
                 matching_words.append(premise[i + j][1])
@@ -634,7 +735,7 @@ def find_order(premise, answer):
     return results
 
 
-# In[1588]:
+# In[316]:
 
 
 # This function useful for grouping same tag-label 
@@ -672,18 +773,13 @@ def grouping_same_tag(tag_answers, tag_premises, same_tag_array, tag):
         if len(matching_words) != 0:
             for word in matching_words:
                 same_tag_array.append(word)
-        
-        # If no matching words, use NER algorithm above
-        
-        else:
-            grouping_same_tag(tag_answers, tag_premises, same_tag_array, "ner")
 
     # Still, filter value with hash
     
     return remove_values_with_hash(same_tag_array)
 
 
-# In[1589]:
+# In[317]:
 
 
 # This function useful for
@@ -694,7 +790,7 @@ def contains_only_punctuation(text):
     return all(char in string.punctuation for char in text)
 
 
-# In[1590]:
+# In[318]:
 
 
 # This function useful for
@@ -727,7 +823,7 @@ def filtering_plausible_answer(answer, plausible_answer_array):
     return final_plausible_answer_array
 
 
-# In[1591]:
+# In[319]:
 
 
 # This function useful for
@@ -736,28 +832,27 @@ def filtering_plausible_answer(answer, plausible_answer_array):
 # "make sense" answer
 
 def is_number(input_str):
-    pattern = r'^.*\b\d+(\.\d+)?\b.*$'
-    return re.match(pattern, input_str) is not None
+    pattern = r'\d'
+    return bool(re.search(pattern, input_str))
 
 def is_date(input_str):
-    pattern_1 = r'\d{1,2} [A-Za-z]+(?: \d{4})?'
-    pattern_2 = r'^\d{4}-\d{2}-\d{2}$'
-    return (re.match(pattern_1, input_str) or re.match(pattern_2, input_str)) is not None
+    pattern = r'\b\d{1,2}[/\s](\d{1,2}|\w+)[/\s]\d{4}\b'
+    return bool(re.search(pattern, input_str))
 
 def is_time(input_str):
-    pattern = r'^\d{2}:\d{2}:\d{2}$'
-    return re.match(pattern, input_str) is not None
+    pattern = r'\b\d{1,2}[:.]\d{2}(:\d{2})?\b'
+    return bool(re.search(pattern, input_str))
 
 def check_regex(right_answer, plausible_answer_array):
     
-    if is_number(right_answer):
-        plausible_answer_array = [item for item in plausible_answer_array if is_number(item)]
-    
-    elif is_date(right_answer):
+    if is_date(right_answer):
         plausible_answer_array = [item for item in plausible_answer_array if is_date(item)]
     
     elif is_time(right_answer):
         plausible_answer_array = [item for item in plausible_answer_array if is_time(item)]
+        
+    elif is_number(right_answer):
+        plausible_answer_array = [item for item in plausible_answer_array if is_number(item)]
         
     else:
         plausible_answer_array = [item for item in plausible_answer_array if (not is_number(item) or 
@@ -768,7 +863,43 @@ def check_regex(right_answer, plausible_answer_array):
     return plausible_answer_array
 
 
-# In[1592]:
+# In[320]:
+
+
+# This function useful for
+# overlap checking
+# after select random word
+
+def overlap_checking_with_random_word(premise, right_answer, max_iter=10, word_threshold=3, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
+    
+    # Selecting wrong answer from random word in premise
+    wrong_answer = select_random_word(premise, right_answer)
+
+    # If that random word is overlapping to right answer,
+    # iterate again until it is not overlap again until reach the max counter
+
+    counter = 0
+
+    while True:
+
+        counter += 1
+
+        if len(filtering_plausible_answer(right_answer, wrong_answer)) > 0:
+            break
+
+        # If it still detect overlapped right answer,
+        # just assign it with NO_ANSWER_STATEMENT.
+
+        if counter == max_iter or len(wrong_answer) < word_threshold:
+            wrong_answer = NO_ANSWER_STATEMENT
+            break
+
+        wrong_answer = select_random_word(premise, right_answer)
+    
+    return wrong_answer
+
+
+# In[321]:
 
 
 # This function useful for
@@ -781,24 +912,20 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
 
     if tag == "ner": slice = 'same_ner_tag_answer'
     elif tag == "chunking": slice = 'same_chunking_tag_answer'
-    else: slice = None
-
+    
     # Find all the sorted (by similarity) plausible wrong answer, 
     # and remove hask & punctuation only answer
     
     if slice != None:
         wrong_answer_array = return_similarity_sorted_array(right_answer, data[slice][index])
     
-    else:
-        wrong_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
-    
     # Below, do the filtering to plausible answer
-    
+
     plausible_answer_array = remove_values_with_hash(wrong_answer_array)
     plausible_answer_array = filtering_plausible_answer(right_answer, plausible_answer_array)
     plausible_answer_array = check_regex(right_answer, plausible_answer_array)
-    
-    try:
+
+    if len(plausible_answer_array) > 0:
         
         # Only return the most similar to right_answer
         wrong_answer = plausible_answer_array[0].strip()
@@ -808,40 +935,17 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
         
         elif tag == "chunking":
             properties = "IDENTICAL Chunking labels were found, and the highest similarity score from same Chunking array was selected"
-        
-        else:
-            properties = "NO CHUNKING labels were found, and the highest similarity score from plausible answer was selected"
     
-    except:
+    else:
         
-        # Selecting wrong answer from random word in premise
-        wrong_answer = select_random_word(premise, right_answer)
-        
-        # If that random word is overlapping to right answer,
-        # iterate again until it is not overlap again
-        
-        while True:
-            
-            if filtering_plausible_answer(right_answer, wrong_answer) != []:
-                break
-
-            wrong_answer = select_random_word(premise, right_answer)[0]
-
-        # If it still detect overlapped right answer,
-        # just assign it with NO_ANSWER_STATEMENT.
-        # But, this condition is very-extraordinary
-        
-        else:
-            wrong_answer = NO_ANSWER_STATEMENT
+        # Return wrong answer from random word in premise with overlap checking
+        wrong_answer = overlap_checking_with_random_word(premise, right_answer)
         
         if tag == "ner": 
             properties = "Detected (NER) wrong answer that is the SAME as the right answer, search random word from premise"
         
         elif tag == "chunking":
             properties = "Detected (Chunking) wrong answer that is the SAME as the right answer, search random word from premise"
-        
-        else:
-            properties = "Detected (Random) wrong answer that is the SAME as the right answer, search random word from premise"
     
     # Still need to check/assert the wrong answer
     # and the plausible answer type
@@ -852,7 +956,7 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
     return wrong_answer, plausible_answer_array, properties
 
 
-# In[1593]:
+# In[322]:
 
 
 # This function useful for
@@ -860,30 +964,42 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
 # section on create wrong answer
 # to detect: number, date, and time
 
-def matching_regex(right_answer, premise):
+def matching_regex(right_answer, chunking_tag_premise):
     
     plausible_answer_array = []
 
-    for word in premise.split():
+    for _, word in chunking_tag_premise:
         
         word = remove_punctuation(word)
         right_answer = remove_punctuation(right_answer)
         
         if (word != right_answer) and (word not in right_answer):
-        
-            if is_number(word) and is_number(right_answer):
-                plausible_answer_array.append(word)
 
             if is_date(word) and is_date(right_answer):
                 plausible_answer_array.append(word)
 
             if is_time(word) and is_time(right_answer):
                 plausible_answer_array.append(word)
+                
+            if is_number(word) and is_number(right_answer):
+                plausible_answer_array.append(word)
 
     return plausible_answer_array
 
 
-# In[1594]:
+# In[323]:
+
+
+# This function useful for
+# cleaning the reference off the premise
+
+def cleaning_premise(premise):
+    cleaned_premise = re.sub(r'\[.*?\]', '', premise)
+    cleaned_premise = re.sub(r'jmpl\|200px\|', '', cleaned_premise)
+    return cleaned_premise
+
+
+# In[324]:
 
 
 # This function is the main idea to create wrong answer
@@ -898,10 +1014,17 @@ def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
     data['plausible_answer_based_on_method'] = ""
     data['properties'] = ""
     
+    #print("FOR A DEBUG PUPROSE")
+    
     for i in tqdm(range(len(data))):
         
+        #print(f"Iteration: {i}")
+        #print(f"Premise: {data['premise'][i]}")
+        #print(f"Question: {data['question'][i]}")
+        #print(f"Right answer: {data['answer'][i]}")
+        
         right_answer = data['answer'][i]
-        premise = data['premise'][i]
+        premise = cleaning_premise(data['premise'][i])
 
         same_ner_tag_answer_array = list()
         same_chunking_tag_answer_array = list()
@@ -937,9 +1060,10 @@ def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
         # Firstly, matching regex
         if is_number(right_answer) or is_date(right_answer) or is_time(right_answer):
             
-            plausible_answer_array = matching_regex(right_answer, premise)
+            plausible_answer_array = matching_regex(right_answer, chunking_tag_premise)
+            plausible_answer_array = filtering_plausible_answer(right_answer, plausible_answer_array)
             
-            if len(plausible_answer_array) != 0:
+            if len(plausible_answer_array) > 0:
                 plausible_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
                 wrong_answer = plausible_answer_array[0].strip()
                 data['properties'][i] = "Regex matched with right answer, and get alternative answer"
@@ -957,7 +1081,7 @@ def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
         # If the NER of the right_answer can be detected, then calculate the distance using semantic 
         # similarity or word vectors between the right_answer and various possible wrong_answers with 
         # the same NER as the right_answer. Once done, proceed to the final wrong_answer.
-        
+
         if data['same_ner_tag_answer'][i] != list():
             wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, \
                                                                       i, "ner", plausible_answer_array, premise)
@@ -980,14 +1104,12 @@ def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
             
             # If the POS/Chunking of the right_answer cannot be detected (NULL) or context/premise 
             # does not contain any of NER of right_answer, then the final wrong_answer will be chosen 
-            # based on a plausible answer.
+            # selected random word from premise.
             
             else:
-                for chunking_tag in chunking_tag_premise:
-                    plausible_answer_array.append(chunking_tag[1])
-
-                wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, \
-                                                                          i, "none", plausible_answer_array, premise)
+                properties = "No same tag detected, search random word from premise"
+                wrong_answer = overlap_checking_with_random_word(premise, right_answer)
+                plausible_answer_array = list()
         
         data['properties'][i] = properties
         data['wrong_answer'][i] = wrong_answer
@@ -997,7 +1119,7 @@ def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
     return data       
 
 
-# In[1595]:
+# In[325]:
 
 
 data_nli_train_df = create_wrong_answer(data_nli_train_df)
@@ -1005,14 +1127,14 @@ data_nli_val_df = create_wrong_answer(data_nli_val_df)
 data_nli_test_df = create_wrong_answer(data_nli_test_df)
 
 
-# In[1596]:
+# In[326]:
 
 
 #data_debug = create_wrong_answer(data_debug)
 #data_debug
 
 
-# In[1597]:
+# In[327]:
 
 
 #print("Right answer:", data_debug['answer'][0])
@@ -1021,13 +1143,7 @@ data_nli_test_df = create_wrong_answer(data_nli_test_df)
 #print("Wrong answer:", data_debug['wrong_answer'][0])
 
 
-# In[1498]:
-
-
-#1+1
-
-
-# In[1503]:
+# In[297]:
 
 
 #print("Premise:", data_debug['premise'][0])
@@ -1039,7 +1155,7 @@ data_nli_test_df = create_wrong_answer(data_nli_test_df)
 
 # # Split to two dataset: right dataset & wrong dataset
 
-# In[33]:
+# In[ ]:
 
 
 # This method is just only
@@ -1056,7 +1172,7 @@ def move_to_column_number(data, column_name="hypothesis", column_num=3):
     return data
 
 
-# In[34]:
+# In[ ]:
 
 
 # Creating answerable right (entailment label) dataset
@@ -1076,7 +1192,7 @@ data_nli_answerable_right_val_df = data_nli_answerable_right_val_df.reset_index(
 data_nli_answerable_right_test_df = data_nli_answerable_right_test_df.reset_index(drop=True)
 
 
-# In[35]:
+# In[ ]:
 
 
 # Creating answerable wrong (contradiction label) dataset
@@ -1104,7 +1220,7 @@ data_nli_answerable_wrong_val_df = move_to_column_number(data_nli_answerable_wro
 data_nli_answerable_wrong_test_df = move_to_column_number(data_nli_answerable_wrong_test_df, "answer", 2)
 
 
-# In[36]:
+# In[ ]:
 
 
 # Creating unanswerable right (entailment label) and no-answer dataset
@@ -1120,7 +1236,7 @@ data_nli_unanswerable_right_val_df = data_nli_unanswerable_right_val_df[data_nli
 data_nli_unanswerable_right_test_df = data_nli_unanswerable_right_test_df[data_nli_unanswerable_right_test_df['answer'] == '']
 
 
-# In[37]:
+# In[ ]:
 
 
 # Creating unanswerable wrong (contradiction label) and no-answer dataset
@@ -1144,7 +1260,7 @@ data_nli_unanswerable_wrong_val_df = move_to_column_number(data_nli_unanswerable
 data_nli_unanswerable_wrong_test_df = move_to_column_number(data_nli_unanswerable_wrong_test_df, "answer", 2)
 
 
-# In[38]:
+# In[ ]:
 
 
 # Rather than duplicating the no-answer statement, 
@@ -1161,7 +1277,7 @@ def balancing_data(data1, data2):
     return data1, data2
 
 
-# In[39]:
+# In[ ]:
 
 
 data_nli_unanswerable_right_train_df, data_nli_unanswerable_wrong_train_df = balancing_data(data_nli_unanswerable_right_train_df,
@@ -1184,7 +1300,7 @@ data_nli_unanswerable_wrong_val_df = data_nli_unanswerable_wrong_val_df.reset_in
 data_nli_unanswerable_wrong_test_df = data_nli_unanswerable_wrong_test_df.reset_index(drop=True)
 
 
-# In[40]:
+# In[ ]:
 
 
 # For debug purpose
@@ -1215,7 +1331,7 @@ print("TEST:", len(data_nli_unanswerable_wrong_test_df))
 
 # # Convert question-answer pair to hypothesis
 
-# In[41]:
+# In[ ]:
 
 
 # Maybe we can try this approach
@@ -1227,7 +1343,7 @@ print("TEST:", len(data_nli_unanswerable_wrong_test_df))
 #                                                               truncation=True))
 
 
-# In[42]:
+# In[ ]:
 
 
 # This function useful for
@@ -1257,7 +1373,7 @@ def convert_question_and_answer_to_hypothesis(data, NO_ANSWER_STATEMENT=NO_ANSWE
     return data
 
 
-# In[43]:
+# In[ ]:
 
 
 data_nli_answerable_right_train_df = convert_question_and_answer_to_hypothesis(data_nli_answerable_right_train_df)
@@ -1269,7 +1385,7 @@ data_nli_answerable_right_val_df = move_to_column_number(data_nli_answerable_rig
 data_nli_answerable_right_test_df = move_to_column_number(data_nli_answerable_right_test_df, "hypothesis", 3)
 
 
-# In[44]:
+# In[ ]:
 
 
 data_nli_answerable_wrong_train_df = convert_question_and_answer_to_hypothesis(data_nli_answerable_wrong_train_df)
@@ -1281,7 +1397,7 @@ data_nli_answerable_wrong_val_df = move_to_column_number(data_nli_answerable_wro
 data_nli_answerable_wrong_test_df = move_to_column_number(data_nli_answerable_wrong_test_df, "hypothesis", 3)
 
 
-# In[45]:
+# In[ ]:
 
 
 data_nli_unanswerable_right_train_df = convert_question_and_answer_to_hypothesis(data_nli_unanswerable_right_train_df)
@@ -1293,7 +1409,7 @@ data_nli_unanswerable_right_val_df = move_to_column_number(data_nli_unanswerable
 data_nli_unanswerable_right_test_df = move_to_column_number(data_nli_unanswerable_right_test_df, "hypothesis", 3)
 
 
-# In[46]:
+# In[ ]:
 
 
 data_nli_unanswerable_wrong_train_df = convert_question_and_answer_to_hypothesis(data_nli_unanswerable_wrong_train_df)
@@ -1307,7 +1423,7 @@ data_nli_unanswerable_wrong_test_df = move_to_column_number(data_nli_unanswerabl
 
 # # Assign the label: entailment & contradiction
 
-# In[47]:
+# In[ ]:
 
 
 data_nli_answerable_right_train_df['label'] = 'entailment'
@@ -1319,7 +1435,7 @@ data_nli_answerable_right_val_df = move_to_column_number(data_nli_answerable_rig
 data_nli_answerable_right_test_df = move_to_column_number(data_nli_answerable_right_test_df, "label", 4)
 
 
-# In[48]:
+# In[ ]:
 
 
 data_nli_answerable_wrong_train_df['label'] = 'contradiction'
@@ -1331,7 +1447,7 @@ data_nli_answerable_wrong_val_df = move_to_column_number(data_nli_answerable_wro
 data_nli_answerable_wrong_test_df = move_to_column_number(data_nli_answerable_wrong_test_df, "label", 4)
 
 
-# In[49]:
+# In[ ]:
 
 
 data_nli_unanswerable_right_train_df['label'] = 'entailment'
@@ -1343,7 +1459,7 @@ data_nli_unanswerable_right_val_df = move_to_column_number(data_nli_unanswerable
 data_nli_unanswerable_right_test_df = move_to_column_number(data_nli_unanswerable_right_test_df, "label", 4)
 
 
-# In[50]:
+# In[ ]:
 
 
 data_nli_unanswerable_wrong_train_df['label'] = 'contradiction'
@@ -1357,7 +1473,7 @@ data_nli_unanswerable_wrong_test_df = move_to_column_number(data_nli_unanswerabl
 
 # # Concat the right and wrong NLI to one NLI dataset
 
-# In[51]:
+# In[ ]:
 
 
 data_nli_train_df_final = pd.concat([data_nli_answerable_right_train_df, 
@@ -1376,7 +1492,7 @@ data_nli_test_df_final = pd.concat([data_nli_answerable_right_test_df,
                                     data_nli_unanswerable_wrong_test_df], axis=0, ignore_index=True)
 
 
-# In[52]:
+# In[ ]:
 
 
 # For debug purpose,
@@ -1403,7 +1519,7 @@ def debug_data(data):
 # debug_data(data_nli_test_df_final)
 
 
-# In[53]:
+# In[ ]:
 
 
 # For debug purpose
@@ -1422,22 +1538,18 @@ print(len(data_nli_test_df_final))
 
 # # Convert to DataFrame format to CSV
 
-# In[54]:
+# In[ ]:
 
 
-data_nli_train_df_final.to_csv(f"{NAME}_nli_train_df.csv", index=False)
-data_nli_val_df_final.to_csv(f"{NAME}_nli_val_df.csv", index=False)
-data_nli_test_df_final.to_csv(f"{NAME}_nli_test_df.csv", index=False)
+data_nli_train_df_final.to_csv(f"{DATA_NAME}_nli_train_df.csv", index=False)
+data_nli_val_df_final.to_csv(f"{DATA_NAME}_nli_val_df.csv", index=False)
+data_nli_test_df_final.to_csv(f"{DATA_NAME}_nli_test_df.csv", index=False)
 
 
-# In[55]:
+# In[ ]:
 
 
 print("PROGRAM FINISHED")
 
 
 # In[ ]:
-
-
-
-
