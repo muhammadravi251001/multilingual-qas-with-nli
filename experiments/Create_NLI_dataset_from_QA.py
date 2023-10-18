@@ -3,7 +3,7 @@
 
 # # Define tool and model of the tool
 
-# In[7]:
+# In[78]:
 
 
 # get_ipython().system('nvidia-smi')
@@ -11,7 +11,8 @@
 
 # Below, it is some settings to run in my local.
 
-# In[8]:
+# In[79]:
+
 
 import os, torch
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -22,8 +23,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # You can tweak your settings too in code below.
 
-# In[9]:
-
+# In[80]:
 import argparse
 import sys
 
@@ -53,10 +53,9 @@ URL_STOPWORD = "https://raw.githubusercontent.com/6/stopwords-json/master/stopwo
 TASK_PARAPHRASER_NAME = "text2text-generation"
 MODEL_PARAPHRASER_NAME = ""
 
-
 # # Import anything
 
-# In[10]:
+# In[81]:
 
 
 import transformers
@@ -106,13 +105,13 @@ from transformers import (
 
 # # Retrieve QA dataset
 
-# In[11]:
+# In[82]:
 
 
 print("PROGRAM STARTED")
 
 
-# In[12]:
+# In[83]:
 
 
 if (DATA_NAME == "squad-id"):
@@ -285,7 +284,7 @@ elif (DATA_NAME == "tydi-qa-id"):
 
 # ## Convert Dataset to DataFrame format
 
-# In[13]:
+# In[84]:
 
 
 # 42, the answer to life the universe and everything
@@ -294,7 +293,7 @@ seed_value = 42
 random.seed(seed_value)
 
 
-# In[14]:
+# In[85]:
 
 
 # If you want to training all of the data (prod),
@@ -319,7 +318,7 @@ else:
 
 # ## Retrieve answer text only
 
-# In[15]:
+# In[86]:
 
 
 # Only retrieve answer text
@@ -332,7 +331,7 @@ def retrieve_answer_text(data):
     return data
 
 
-# In[16]:
+# In[87]:
 
 
 data_qas_train_df = retrieve_answer_text(data_qas_train_df)
@@ -342,7 +341,7 @@ data_qas_test_df = retrieve_answer_text(data_qas_test_df)
 
 # ## Create NLI dataset from copy of QA dataset above
 
-# In[17]:
+# In[88]:
 
 
 data_nli_train_df = data_qas_train_df.copy()
@@ -350,13 +349,13 @@ data_nli_val_df = data_qas_val_df.copy()
 data_nli_test_df = data_qas_test_df.copy()
 
 
-# In[18]:
+# In[89]:
 
 
 data_qas_train_df
 
 
-# In[19]:
+# In[90]:
 
 
 data = {
@@ -366,7 +365,7 @@ data = {
 }
 
 
-# In[20]:
+# In[91]:
 
 
 #data_debug = pd.DataFrame(data)
@@ -375,7 +374,7 @@ data = {
 
 # ## Convert context pair to premise (only renaming column)
 
-# In[21]:
+# In[92]:
 
 
 # Renaming it, just for consistency
@@ -385,7 +384,7 @@ data_nli_val_df = data_nli_val_df.rename(columns={"context": "premise"})
 data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
 
-# In[22]:
+# In[93]:
 
 
 #data_debug = data_debug.rename(columns={"context": "premise"})
@@ -395,7 +394,7 @@ data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
 # ## Import pipeline to create contradiction cases
 
-# In[23]:
+# In[94]:
 
 
 nlp_tools_ner = pipeline(task = TASK_NER_NAME, 
@@ -406,7 +405,7 @@ nlp_tools_ner = pipeline(task = TASK_NER_NAME,
                      aggregation_strategy = 'simple')
 
 
-# In[24]:
+# In[95]:
 
 
 nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME, 
@@ -419,7 +418,7 @@ nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME,
 
 # ## Add NER and chunking tag column in DataFrame
 
-# In[25]:
+# In[96]:
 
 
 # This code useful for cleaning the data (text)
@@ -430,7 +429,7 @@ def remove_space_after_number_and_punctuation(text):
     return cleaned_text
 
 
-# In[26]:
+# In[97]:
 
 
 # This code useful for tagging the entire premise
@@ -454,7 +453,7 @@ def add_premise_tag(data, tag, index, premise_array, ner=nlp_tools_ner, chunking
     return premise_array
 
 
-# In[27]:
+# In[98]:
 
 
 # Function for clean the text off punctuation
@@ -465,7 +464,7 @@ def remove_punctuation(text):
     return cleaned_text
 
 
-# In[28]:
+# In[99]:
 
 
 # This code useful for tagging the entire answer
@@ -490,20 +489,23 @@ def add_answer_tag(answer, tag, premise_array, ner=nlp_tools_ner, chunking=nlp_t
                 
                 label_from_premise_tag = i[0]
                 word_from_premise_tag = remove_space_after_number_and_punctuation(i[1])
+                
+                lower_answer = answer.lower()
+                lower_word_from_premise_tag = word_from_premise_tag.lower()
 
                 # With assumption, that I do not dividing label when
                 # there is more than one label in one word answer.
                 # Instead, I give a NULL.
 
-                if word_from_premise_tag.lower() == answer.lower():
+                if lower_word_from_premise_tag == lower_answer:
                     tag_answer = (label_from_premise_tag, word_from_premise_tag)
                     break
 
                 # Or, I could do this: to reducing NULL label 
                 # with subset of string not really with the entire string.
                 
-                elif answer.lower() in word_from_premise_tag or word_from_premise_tag in answer.lower():
-                    tag_answer = (label_from_premise_tag, answer.lower())
+                elif lower_answer in lower_word_from_premise_tag or lower_word_from_premise_tag in lower_answer:
+                    tag_answer = (label_from_premise_tag, answer)
                     break
                 
                 # Then, if you still do not find the word, NULL given
@@ -550,8 +552,11 @@ def add_answer_tag(answer, tag, premise_array, ner=nlp_tools_ner, chunking=nlp_t
                 
                 # Take label from subset of sentence from premise
                 
-                if answer.lower() in word_from_premise_tag:
-                    tag_answer = (label_from_premise_tag, answer.lower())
+                lower_answer = answer.lower()
+                lower_word_from_premise_tag = word_from_premise_tag.lower()
+                
+                if lower_answer in lower_word_from_premise_tag:
+                    tag_answer = (label_from_premise_tag, answer)
                     tag_answer_list.append(tag_answer)
                     break
             
@@ -565,7 +570,7 @@ def add_answer_tag(answer, tag, premise_array, ner=nlp_tools_ner, chunking=nlp_t
     return tag_answer_list
 
 
-# In[29]:
+# In[100]:
 
 
 # This is a helper code to run
@@ -597,7 +602,7 @@ def add_ner_and_chunking_all_tag(data):
     return data
 
 
-# In[30]:
+# In[101]:
 
 
 data_nli_train_df = add_ner_and_chunking_all_tag(data_nli_train_df)
@@ -605,7 +610,7 @@ data_nli_val_df = add_ner_and_chunking_all_tag(data_nli_val_df)
 data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 
-# In[31]:
+# In[102]:
 
 
 #data_debug = add_ner_and_chunking_all_tag(data_debug)
@@ -614,7 +619,7 @@ data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 # # Create wrong answer
 
-# In[32]:
+# In[103]:
 
 
 # This function useful for sorting the closest distance
@@ -623,8 +628,6 @@ data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 model_similarity = SentenceTransformer(MODEL_SIMILARITY_NAME)
 
 def return_similarity_sorted_array(right_answer, sentence_array, model=model_similarity):
-    
-    right_answer = right_answer.lower()
     
     embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device)
     embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device)
@@ -638,7 +641,7 @@ def return_similarity_sorted_array(right_answer, sentence_array, model=model_sim
     return sorted_array
 
 
-# In[33]:
+# In[104]:
 
 
 # This function useful for
@@ -651,7 +654,7 @@ def remove_values_with_hash(arr):
     return [item for item in arr if "#" not in item]
 
 
-# In[34]:
+# In[105]:
 
 
 # Retrieve stopword from all language
@@ -666,7 +669,7 @@ else:
 stopword_data = set([item for sublist in list(stopword_data.values()) for item in sublist])
 
 
-# In[35]:
+# In[106]:
 
 
 # This function just retrieve random word
@@ -674,7 +677,7 @@ stopword_data = set([item for sublist in list(stopword_data.values()) for item i
 
 def select_random_word(text, answer, stopword_data=stopword_data):
 
-    words = re.findall(r'\w+', text.lower())
+    words = re.findall(r'\w+', text)
     
     # Filtering to remove stopword and punctuation
     filtered_words = [word for word in words if word not in stopword_data and word not in string.punctuation]
@@ -690,6 +693,7 @@ def select_random_word(text, answer, stopword_data=stopword_data):
     # with the same order as filtered words
     
     else:
+        
         start_index = random.randint(0, len(filtered_words) - len(answer.split()))
         random_word_array = filtered_words[start_index : start_index + len(answer.split())]
         random_word = ' '.join(random_word_array)
@@ -697,7 +701,7 @@ def select_random_word(text, answer, stopword_data=stopword_data):
     return random_word.strip()
 
 
-# In[36]:
+# In[107]:
 
 
 # This function useful for find the same order
@@ -732,7 +736,7 @@ def find_order(premise, answer):
     return results
 
 
-# In[37]:
+# In[108]:
 
 
 # This function useful for grouping same tag-label 
@@ -776,7 +780,7 @@ def grouping_same_tag(tag_answers, tag_premises, same_tag_array, tag):
     return remove_values_with_hash(same_tag_array)
 
 
-# In[38]:
+# In[109]:
 
 
 # This function useful for
@@ -787,7 +791,7 @@ def contains_only_punctuation(text):
     return all(char in string.punctuation for char in text)
 
 
-# In[39]:
+# In[110]:
 
 
 # This function useful for
@@ -799,9 +803,7 @@ def filtering_plausible_answer(answer, plausible_answer_array):
     if type(plausible_answer_array) == str: 
         plausible_answer_array = list([plausible_answer_array])
     
-    answer = answer.lower()
-    
-    plausible_answer_array = [item.lower().strip() for item in plausible_answer_array]
+    plausible_answer_array = [item.strip() for item in plausible_answer_array]
     plausible_answer_array = [string for string in plausible_answer_array if not contains_only_punctuation(string)]
     plausible_answer_array = [remove_punctuation(text) for text in plausible_answer_array]
     
@@ -820,7 +822,7 @@ def filtering_plausible_answer(answer, plausible_answer_array):
     return final_plausible_answer_array
 
 
-# In[40]:
+# In[111]:
 
 
 # This function useful for
@@ -860,14 +862,18 @@ def check_regex(right_answer, plausible_answer_array):
     return plausible_answer_array
 
 
-# In[41]:
+# In[112]:
 
 
 # This function useful for
 # overlap checking
 # after select random word
 
-def overlap_checking_with_random_word(premise, right_answer, max_iter=10, word_threshold=3, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
+def overlap_checking_with_random_word(premise, 
+                                      right_answer, 
+                                      max_iter=10, 
+                                      word_threshold=3, 
+                                      NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
     
     # Selecting wrong answer from random word in premise
     wrong_answer = select_random_word(premise, right_answer)
@@ -880,8 +886,11 @@ def overlap_checking_with_random_word(premise, right_answer, max_iter=10, word_t
     while True:
 
         counter += 1
-
-        if len(filtering_plausible_answer(right_answer, wrong_answer)) > 0:
+        
+        # Restricting to be extractive model (substring must matched!)
+        
+        if len(filtering_plausible_answer(right_answer, wrong_answer)) > 0 \
+            and wrong_answer in premise:
             break
 
         # If it still detect overlapped right answer,
@@ -896,7 +905,7 @@ def overlap_checking_with_random_word(premise, right_answer, max_iter=10, word_t
     return wrong_answer
 
 
-# In[42]:
+# In[118]:
 
 
 # This function useful for
@@ -952,7 +961,7 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
     return wrong_answer, plausible_answer_array, properties
 
 
-# In[43]:
+# In[119]:
 
 
 # This function useful for
@@ -983,7 +992,7 @@ def matching_regex(right_answer, chunking_tag_premise):
     return plausible_answer_array
 
 
-# In[44]:
+# In[120]:
 
 
 # This function useful for
@@ -995,7 +1004,7 @@ def cleaning_premise(premise):
     return cleaned_premise
 
 
-# In[48]:
+# In[121]:
 
 
 # This function is the main idea to create wrong answer
@@ -1115,7 +1124,7 @@ def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
     return data       
 
 
-# In[49]:
+# In[124]:
 
 
 data_nli_train_df = create_wrong_answer(data_nli_train_df)
@@ -1123,13 +1132,7 @@ data_nli_val_df = create_wrong_answer(data_nli_val_df)
 data_nli_test_df = create_wrong_answer(data_nli_test_df)
 
 
-# In[47]:
-
-
-data_nli_train_df
-
-
-# In[356]:
+# In[123]:
 
 
 #data_debug = create_wrong_answer(data_debug)
