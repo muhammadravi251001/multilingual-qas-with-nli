@@ -3,7 +3,7 @@
 
 # # Define tool and model of the tool
 
-# In[1]:
+# In[7]:
 
 
 # get_ipython().system('nvidia-smi')
@@ -11,8 +11,7 @@
 
 # Below, it is some settings to run in my local.
 
-# In[2]:
-
+# In[8]:
 
 import os, torch
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -20,19 +19,17 @@ os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+# You can tweak your settings too in code below.
+
+# In[9]:
+
 import argparse
 import sys
 
 parser = argparse.ArgumentParser(description="Program untuk fine-tuning dataset QA")
 parser.add_argument('-d', '--data_name', type=str, metavar='', required=True)
 args = parser.parse_args()
-
-# You can tweak your settings too in code below.
-
-# In[3]:
-
-
-import sys
 
 DATA_NAME = args.data_name
 NO_ANSWER_STATEMENT = "Tidak ada jawaban"
@@ -52,13 +49,13 @@ MODEL_PARAPHRASER_NAME = ""
 # Uncomment sys.maxsize to create all of the data, 
 # else if you want to debugging
 
-SAMPLE = sys.maxsize
-# SAMPLE = 150
+# SAMPLE = sys.maxsize
+SAMPLE = 10
 
 
 # # Import anything
 
-# In[4]:
+# In[10]:
 
 
 import transformers
@@ -108,13 +105,13 @@ from transformers import (
 
 # # Retrieve QA dataset
 
-# In[5]:
+# In[11]:
 
 
 print("PROGRAM STARTED")
 
 
-# In[6]:
+# In[12]:
 
 
 if (DATA_NAME == "squad-id"):
@@ -283,12 +280,11 @@ elif (DATA_NAME == "tydi-qa-id"):
     data_qas = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
 
 
-
 # # Convert to NLI, with hypothesis being just do concat question & answer
 
 # ## Convert Dataset to DataFrame format
 
-# In[7]:
+# In[13]:
 
 
 # 42, the answer to life the universe and everything
@@ -297,7 +293,7 @@ seed_value = 42
 random.seed(seed_value)
 
 
-# In[8]:
+# In[14]:
 
 
 # If you want to training all of the data (prod),
@@ -322,7 +318,7 @@ else:
 
 # ## Retrieve answer text only
 
-# In[9]:
+# In[15]:
 
 
 # Only retrieve answer text
@@ -335,7 +331,7 @@ def retrieve_answer_text(data):
     return data
 
 
-# In[10]:
+# In[16]:
 
 
 data_qas_train_df = retrieve_answer_text(data_qas_train_df)
@@ -345,7 +341,7 @@ data_qas_test_df = retrieve_answer_text(data_qas_test_df)
 
 # ## Create NLI dataset from copy of QA dataset above
 
-# In[11]:
+# In[17]:
 
 
 data_nli_train_df = data_qas_train_df.copy()
@@ -353,23 +349,23 @@ data_nli_val_df = data_qas_val_df.copy()
 data_nli_test_df = data_qas_test_df.copy()
 
 
-# In[12]:
+# In[18]:
 
 
 data_qas_train_df
 
 
-# In[298]:
+# In[19]:
 
 
 data = {
-    'context': ["Inferno adalah film Amerika Serikat bergenre thriller yang disutradarai oleh Ron Howard, berdsarkan skenario yang ditulis oleh David Koepp. Film ini diangkat dari novel berjudul sama yang ditulis oleh Dan Brown (2013). Inferno melibatkan Tom Hanks, yang tampil kembali memerankan sebagai Robert Langdon dari The Da Vinci Code dan Angels & Demons, didukung beberapa bintang antara lain Felicity Jones, Omar Sy, Sidse Babett Knudsen, Ben Foster, dan Irrfan Khan. Proses produksi dimulai 27 April 2015 di Venice, Italia, dan selesai pada 21 Juli 2015. Menurut rencana, film Inferno akan dirilis pada 14 Oktober 2016."],
-    'question': ["Kapan film Inferno rilis ?"],
-    'answer': ["14 Oktober 2016"]
+    'context': ["Tanpa beasiswa, Ogilvy tidak bisa kuliah di Fettes atau Oxford University karena bisnis ayahnya terkena dampak depresi pertengahan dekade 1920-an. Namun, kuliahnya tidak berhasil dan ia meninggalkan Oxford untuk ke Paris pada tahun 1931 tempat ia menjadi chef magang di Majestic Hotel. Setelah setahun, ia kembali ke Skotlandia dan mulai menjual kompor masak AGA dari rumah ke rumah. Keberhasilannya dalam menjual kompor ini membuatnya dikenal sebagai karyawan, yang kemudian memintanya menulis manual instruksi, The Theory and Practice of Selling the AGA Cooker, untuk staf penjualan lainnya. Tiga puluh tahun kemudian, editor majalah Fortune menyebutnya sebagai manual instruksi penjualan terbaik yang pernah ditulis."],
+    'question': ["Apa alasan Ogilvy tidak bisa kuliah di Fettes atau Oxford University?"],
+    'answer': ["ogilvy tidak bisa kuliah di fettes atau oxford university karena bisnis ayahnya terkena dampak depresi pertengahan dekade 1920-an."]
 }
 
 
-# In[299]:
+# In[20]:
 
 
 #data_debug = pd.DataFrame(data)
@@ -378,7 +374,7 @@ data = {
 
 # ## Convert context pair to premise (only renaming column)
 
-# In[300]:
+# In[21]:
 
 
 # Renaming it, just for consistency
@@ -388,7 +384,7 @@ data_nli_val_df = data_nli_val_df.rename(columns={"context": "premise"})
 data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
 
-# In[301]:
+# In[22]:
 
 
 #data_debug = data_debug.rename(columns={"context": "premise"})
@@ -398,7 +394,7 @@ data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
 # ## Import pipeline to create contradiction cases
 
-# In[302]:
+# In[23]:
 
 
 nlp_tools_ner = pipeline(task = TASK_NER_NAME, 
@@ -409,7 +405,7 @@ nlp_tools_ner = pipeline(task = TASK_NER_NAME,
                      aggregation_strategy = 'simple')
 
 
-# In[303]:
+# In[24]:
 
 
 nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME, 
@@ -422,7 +418,7 @@ nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME,
 
 # ## Add NER and chunking tag column in DataFrame
 
-# In[304]:
+# In[25]:
 
 
 # This code useful for cleaning the data (text)
@@ -433,7 +429,7 @@ def remove_space_after_number_and_punctuation(text):
     return cleaned_text
 
 
-# In[305]:
+# In[26]:
 
 
 # This code useful for tagging the entire premise
@@ -457,7 +453,7 @@ def add_premise_tag(data, tag, index, premise_array, ner=nlp_tools_ner, chunking
     return premise_array
 
 
-# In[306]:
+# In[27]:
 
 
 # Function for clean the text off punctuation
@@ -468,7 +464,7 @@ def remove_punctuation(text):
     return cleaned_text
 
 
-# In[307]:
+# In[28]:
 
 
 # This code useful for tagging the entire answer
@@ -568,7 +564,7 @@ def add_answer_tag(answer, tag, premise_array, ner=nlp_tools_ner, chunking=nlp_t
     return tag_answer_list
 
 
-# In[308]:
+# In[29]:
 
 
 # This is a helper code to run
@@ -600,7 +596,7 @@ def add_ner_and_chunking_all_tag(data):
     return data
 
 
-# In[309]:
+# In[30]:
 
 
 data_nli_train_df = add_ner_and_chunking_all_tag(data_nli_train_df)
@@ -608,7 +604,7 @@ data_nli_val_df = add_ner_and_chunking_all_tag(data_nli_val_df)
 data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 
-# In[310]:
+# In[31]:
 
 
 #data_debug = add_ner_and_chunking_all_tag(data_debug)
@@ -617,7 +613,7 @@ data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 # # Create wrong answer
 
-# In[311]:
+# In[32]:
 
 
 # This function useful for sorting the closest distance
@@ -629,8 +625,8 @@ def return_similarity_sorted_array(right_answer, sentence_array, model=model_sim
     
     right_answer = right_answer.lower()
     
-    embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device),
-    embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device),
+    embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device)
+    embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device)
     
     # Using cosine scores to calculate
     cosine_scores = util.pytorch_cos_sim(embedding_right_answer, embedding_sentence_array)
@@ -641,7 +637,7 @@ def return_similarity_sorted_array(right_answer, sentence_array, model=model_sim
     return sorted_array
 
 
-# In[312]:
+# In[33]:
 
 
 # This function useful for
@@ -654,7 +650,7 @@ def remove_values_with_hash(arr):
     return [item for item in arr if "#" not in item]
 
 
-# In[313]:
+# In[34]:
 
 
 # Retrieve stopword from all language
@@ -669,7 +665,7 @@ else:
 stopword_data = set([item for sublist in list(stopword_data.values()) for item in sublist])
 
 
-# In[314]:
+# In[35]:
 
 
 # This function just retrieve random word
@@ -700,7 +696,7 @@ def select_random_word(text, answer, stopword_data=stopword_data):
     return random_word.strip()
 
 
-# In[315]:
+# In[36]:
 
 
 # This function useful for find the same order
@@ -735,7 +731,7 @@ def find_order(premise, answer):
     return results
 
 
-# In[316]:
+# In[37]:
 
 
 # This function useful for grouping same tag-label 
@@ -779,7 +775,7 @@ def grouping_same_tag(tag_answers, tag_premises, same_tag_array, tag):
     return remove_values_with_hash(same_tag_array)
 
 
-# In[317]:
+# In[38]:
 
 
 # This function useful for
@@ -790,7 +786,7 @@ def contains_only_punctuation(text):
     return all(char in string.punctuation for char in text)
 
 
-# In[318]:
+# In[39]:
 
 
 # This function useful for
@@ -823,7 +819,7 @@ def filtering_plausible_answer(answer, plausible_answer_array):
     return final_plausible_answer_array
 
 
-# In[319]:
+# In[40]:
 
 
 # This function useful for
@@ -863,7 +859,7 @@ def check_regex(right_answer, plausible_answer_array):
     return plausible_answer_array
 
 
-# In[320]:
+# In[41]:
 
 
 # This function useful for
@@ -899,7 +895,7 @@ def overlap_checking_with_random_word(premise, right_answer, max_iter=10, word_t
     return wrong_answer
 
 
-# In[321]:
+# In[42]:
 
 
 # This function useful for
@@ -916,8 +912,7 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
     # Find all the sorted (by similarity) plausible wrong answer, 
     # and remove hask & punctuation only answer
     
-    if slice != None:
-        wrong_answer_array = return_similarity_sorted_array(right_answer, data[slice][index])
+    wrong_answer_array = return_similarity_sorted_array(right_answer, data[slice][index])
     
     # Below, do the filtering to plausible answer
 
@@ -956,7 +951,7 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
     return wrong_answer, plausible_answer_array, properties
 
 
-# In[322]:
+# In[43]:
 
 
 # This function useful for
@@ -987,7 +982,7 @@ def matching_regex(right_answer, chunking_tag_premise):
     return plausible_answer_array
 
 
-# In[323]:
+# In[44]:
 
 
 # This function useful for
@@ -999,7 +994,7 @@ def cleaning_premise(premise):
     return cleaned_premise
 
 
-# In[324]:
+# In[48]:
 
 
 # This function is the main idea to create wrong answer
@@ -1119,7 +1114,7 @@ def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
     return data       
 
 
-# In[325]:
+# In[49]:
 
 
 data_nli_train_df = create_wrong_answer(data_nli_train_df)
@@ -1127,14 +1122,20 @@ data_nli_val_df = create_wrong_answer(data_nli_val_df)
 data_nli_test_df = create_wrong_answer(data_nli_test_df)
 
 
-# In[326]:
+# In[47]:
+
+
+data_nli_train_df
+
+
+# In[356]:
 
 
 #data_debug = create_wrong_answer(data_debug)
 #data_debug
 
 
-# In[327]:
+# In[357]:
 
 
 #print("Right answer:", data_debug['answer'][0])
@@ -1553,3 +1554,7 @@ print("PROGRAM FINISHED")
 
 
 # In[ ]:
+
+
+
+
