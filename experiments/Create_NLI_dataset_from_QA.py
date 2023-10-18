@@ -29,9 +29,16 @@ import sys
 
 parser = argparse.ArgumentParser(description="Program untuk fine-tuning dataset QA")
 parser.add_argument('-d', '--data_name', type=str, metavar='', required=True)
+parser.add_argument('-sa', '--sample', type=str, metavar='', required=True)
 args = parser.parse_args()
 
 DATA_NAME = args.data_name
+
+if (args.sample) == "max":
+    SAMPLE = sys.maxsize
+else: 
+    SAMPLE = int(args.sample)
+
 NO_ANSWER_STATEMENT = "Tidak ada jawaban"
 
 TASK_NER_NAME = "ner"
@@ -45,12 +52,6 @@ URL_STOPWORD = "https://raw.githubusercontent.com/6/stopwords-json/master/stopwo
 
 TASK_PARAPHRASER_NAME = "text2text-generation"
 MODEL_PARAPHRASER_NAME = ""
-
-# Uncomment sys.maxsize to create all of the data, 
-# else if you want to debugging
-
-# SAMPLE = sys.maxsize
-SAMPLE = 10
 
 
 # # Import anything
