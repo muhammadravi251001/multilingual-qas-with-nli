@@ -627,18 +627,24 @@ data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 model_similarity = SentenceTransformer(MODEL_SIMILARITY_NAME)
 
-def return_similarity_sorted_array(right_answer, sentence_array, model=model_similarity):
+def return_similarity_sorted_array(right_answer, sentence_array, model=model_similarity, batch_size=32, device=device):
+    sorted_array = []
     
-    embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device)
-    embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device)
-    
-    # Using cosine scores to calculate
-    cosine_scores = util.pytorch_cos_sim(embedding_right_answer, embedding_sentence_array)
-    
-    sorted_indices = cosine_scores.argsort(descending=True)[0]
-    sorted_array = [sentence_array[i] for i in sorted_indices]
-    
+    for i in range(0, len(sentence_array), batch_size):
+        batch = sentence_array[i:i + batch_size]
+        
+        embedding_right_answer = model.encode([right_answer] * len(batch), convert_to_tensor=True, device=device)
+        embedding_sentence_array = model.encode(batch, convert_to_tensor=True, device=device)
+
+        # Using cosine scores to calculate
+        cosine_scores = util.pytorch_cos_sim(embedding_right_answer, embedding_sentence_array)
+
+        sorted_indices = cosine_scores.argsort(descending=True)[0]
+        sorted_batch = [batch[i] for i in sorted_indices]
+        sorted_array.extend(sorted_batch)
+
     return sorted_array
+
 
 
 # In[104]:
@@ -684,8 +690,10 @@ def select_random_word(text, answer, stopword_data=stopword_data):
     
     # If filtered words less than answer
     # only take one word as random word
+
+    splitted_answer = answer.split()
     
-    if len(filtered_words) < len(answer.split()):
+    if len(filtered_words) < len(splitted_answer):
         random_word = random.choice(filtered_words)
     
     # But, if filtered words NOT less than answer
@@ -694,8 +702,8 @@ def select_random_word(text, answer, stopword_data=stopword_data):
     
     else:
         
-        start_index = random.randint(0, len(filtered_words) - len(answer.split()))
-        random_word_array = filtered_words[start_index : start_index + len(answer.split())]
+        start_index = random.randint(0, len(filtered_words) - len(splitted_answer))
+        random_word_array = filtered_words[start_index : start_index + len(splitted_answer)]
         random_word = ' '.join(random_word_array)
     
     return random_word.strip()
@@ -803,20 +811,25 @@ def filtering_plausible_answer(answer, plausible_answer_array):
     if type(plausible_answer_array) == str: 
         plausible_answer_array = list([plausible_answer_array])
     
-    plausible_answer_array = [item.strip() for item in plausible_answer_array]
-    plausible_answer_array = [string for string in plausible_answer_array if not contains_only_punctuation(string)]
-    plausible_answer_array = [remove_punctuation(text) for text in plausible_answer_array]
+    plausible_answer_array = [remove_punctuation(item.strip()) \
+                            for item in plausible_answer_array \
+                                if not contains_only_punctuation(item.strip())]
     
     final_plausible_answer_array = list()
-    answer_words = set(remove_punctuation(text) for text in answer.split())
+
+    splitted_answer = answer.split()
+    answer_words = set(remove_punctuation(text) for text in splitted_answer)
     
     # For check overlapping answer, using set of word,
     # and so, check for intersection
     
     for plausible_answer in plausible_answer_array:
-        plausible_answer_words = set(plausible_answer.split())
+
+        spliited_plausible_answer = plausible_answer.split()
+        plausible_answer_words = set(spliited_plausible_answer)
+        
         if not plausible_answer_words.intersection(answer_words):
-            if not all(word in answer for word in plausible_answer.split()):
+            if not all(word in answer for word in spliited_plausible_answer):
                 final_plausible_answer_array.append(plausible_answer)
     
     return final_plausible_answer_array
