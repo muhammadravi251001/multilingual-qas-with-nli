@@ -627,22 +627,17 @@ data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 model_similarity = SentenceTransformer(MODEL_SIMILARITY_NAME)
 
-def return_similarity_sorted_array(right_answer, sentence_array, model=model_similarity, batch_size=32, device=device):
-    sorted_array = []
+def return_similarity_sorted_array(right_answer, sentence_array, model=model_similarity):
     
-    for i in range(0, len(sentence_array), batch_size):
-        batch = sentence_array[i:i + batch_size]
-        
-        embedding_right_answer = model.encode([right_answer] * len(batch), convert_to_tensor=True, device=device)
-        embedding_sentence_array = model.encode(batch, convert_to_tensor=True, device=device)
-
-        # Using cosine scores to calculate
-        cosine_scores = util.pytorch_cos_sim(embedding_right_answer, embedding_sentence_array)
-
-        sorted_indices = cosine_scores.argsort(descending=True)[0]
-        sorted_batch = [batch[i] for i in sorted_indices]
-        sorted_array.extend(sorted_batch)
-
+    embedding_right_answer = model.encode([right_answer], convert_to_tensor=True, device=device)
+    embedding_sentence_array = model.encode(sentence_array, convert_to_tensor=True, device=device)
+    
+    # Using cosine scores to calculate
+    cosine_scores = util.pytorch_cos_sim(embedding_right_answer, embedding_sentence_array)
+    
+    sorted_indices = cosine_scores.argsort(descending=True)[0]
+    sorted_array = [sentence_array[i] for i in sorted_indices]
+    
     return sorted_array
 
 
@@ -1017,126 +1012,81 @@ def cleaning_premise(premise):
     return cleaned_premise
 
 
-# In[121]:
-
-
 # This function is the main idea to create wrong answer
 # Though, this function is helper function
 
-def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
+def create_wrong_answer(data, batch_size=32, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
+    result = []
     
-    data['same_ner_tag_answer'] = ""
-    data['same_chunking_tag_answer'] = ""
-    data['wrong_answer'] = ""
-    data['no_answer'] = ""
-    data['plausible_answer_based_on_method'] = ""
-    data['properties'] = ""
-    
-    #print("FOR A DEBUG PUPROSE")
-    
-    for i in tqdm(range(len(data))):
-        
-        #print(f"Iteration: {i}")
-        #print(f"Premise: {data['premise'][i]}")
-        #print(f"Question: {data['question'][i]}")
-        #print(f"Right answer: {data['answer'][i]}")
-        
-        right_answer = data['answer'][i]
-        premise = cleaning_premise(data['premise'][i])
+    num_batches = len(data) // batch_size
 
-        same_ner_tag_answer_array = list()
-        same_chunking_tag_answer_array = list()
+    for batch in tqdm(range(num_batches)):
+        batch_data = data[batch * batch_size: (batch + 1) * batch_size]
 
-        ner_tag_answer = data['ner_tag_answer'][i]
-        ner_tag_premise = data['ner_tag_premise'][i]
+        for idx in range(len(batch_data)):
+            row = batch_data.iloc[idx]
 
-        chunking_tag_answer = data['chunking_tag_answer'][i]
-        chunking_tag_premise = data['chunking_tag_premise'][i]
-        
-        # If that row of data is unanswerable, do this, then continue
-        
-        if right_answer == "":
-            data['properties'][i] = "Unanswerable question"
-            data['wrong_answer'][i] = "NULL"
-            data['no_answer'][i] = "NULL"
-            data['plausible_answer_based_on_method'][i] = "Unanswerable question"
-            continue
-            
-        # Grouped with the same NER & Chunking group, between answer and word of premise
-        
-        data['same_ner_tag_answer'][i] = grouping_same_tag(ner_tag_answer,
-                                                           ner_tag_premise,
-                                                           same_ner_tag_answer_array, "ner")
-        
-        data['same_chunking_tag_answer'][i] = grouping_same_tag(chunking_tag_answer, 
-                                                                chunking_tag_premise, 
-                                                                same_chunking_tag_answer_array, "chunking")
-        
-        # Start to create wrong answer
-        plausible_answer_array = list()
-        
-        # Firstly, matching regex
-        if is_number(right_answer) or is_date(right_answer) or is_time(right_answer):
-            
-            plausible_answer_array = matching_regex(right_answer, chunking_tag_premise)
-            plausible_answer_array = filtering_plausible_answer(right_answer, plausible_answer_array)
-            
-            if len(plausible_answer_array) > 0:
-                plausible_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
-                wrong_answer = plausible_answer_array[0].strip()
-                data['properties'][i] = "Regex matched with right answer, and get alternative answer"
-            
+            right_answer = row['answer']
+            premise = cleaning_premise(row['premise'])
+
+            same_ner_tag_answer_array = list()
+            same_chunking_tag_answer_array = list()
+
+            ner_tag_answer = row['ner_tag_answer']
+            ner_tag_premise = row['ner_tag_premise']
+
+            chunking_tag_answer = row['chunking_tag_answer']
+            chunking_tag_premise = row['chunking_tag_premise']
+
+            # Jika baris data tersebut tidak memiliki jawaban (right_answer kosong), lakukan operasi lain dan lanjutkan
+            if right_answer == "":
+                result.append({
+                    'same_ner_tag_answer': [],
+                    'same_chunking_tag_answer': [],
+                    'wrong_answer': "NULL",
+                    'no_answer': "NULL",
+                    'plausible_answer_based_on_method': [],
+                    'properties': "Unanswerable question"
+                })
+                continue
+
+            same_ner_tag_answer = grouping_same_tag(ner_tag_answer, ner_tag_premise, same_ner_tag_answer_array, "ner")
+            same_chunking_tag_answer = grouping_same_tag(chunking_tag_answer, chunking_tag_premise, same_chunking_tag_answer_array, "chunking")
+
+            plausible_answer_array = list()
+
+            if is_number(right_answer) or is_date(right_answer) or is_time(right_answer):
+                plausible_answer_array = matching_regex(right_answer, chunking_tag_premise)
+                plausible_answer_array = filtering_plausible_answer(right_answer, plausible_answer_array)
+
+                if len(plausible_answer_array) > 0:
+                    plausible_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
+                    wrong_answer = plausible_answer_array[0].strip()
+                    properties = "Regex matched with right answer, and get alternative answer"
+                else:
+                    wrong_answer = NO_ANSWER_STATEMENT
+                    properties = "Regex matched with right answer, but no alternative answer"
             else:
-                wrong_answer = NO_ANSWER_STATEMENT
-                data['properties'][i] = "Regex matched with right answer, but no alternative answer"
-            
-            data['wrong_answer'][i] = wrong_answer
-            data['no_answer'][i] = NO_ANSWER_STATEMENT
-            data['plausible_answer_based_on_method'][i] = list(set(plausible_answer_array))
-            continue
+                if same_ner_tag_answer:
+                    wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, idx, "ner", plausible_answer_array, premise)
+                elif same_chunking_tag_answer:
+                    wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, idx, "chunking", plausible_answer_array, premise)
+                else:
+                    properties = "No same tag detected, search random word from premise"
+                    wrong_answer = overlap_checking_with_random_word(premise, right_answer)
+                    plausible_answer_array = list()
 
-        # Perform NER classification
-        # If the NER of the right_answer can be detected, then calculate the distance using semantic 
-        # similarity or word vectors between the right_answer and various possible wrong_answers with 
-        # the same NER as the right_answer. Once done, proceed to the final wrong_answer.
+            result.append({
+                'same_ner_tag_answer': same_ner_tag_answer,
+                'same_chunking_tag_answer': same_chunking_tag_answer,
+                'wrong_answer': wrong_answer,
+                'no_answer': NO_ANSWER_STATEMENT,
+                'plausible_answer_based_on_method': list(set(plausible_answer_array)),
+                'properties': properties
+            })
 
-        if data['same_ner_tag_answer'][i] != list():
-            wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, \
-                                                                      i, "ner", plausible_answer_array, premise)
-            
-        # If the NER of the right_answer cannot be detected (NULL) or context/premise does not contain 
-        # any of NER of right_answer, then the POS/Chunking of the right_answer will be identified.
-        
-        # Perform POS/Chunking classification
-        
-        else:
-            
-            # If the POS/Chunking of the right_answer can be detected, then calculate the distance 
-            # using semantic similarity or word vectors between the right_answer and various possible 
-            # wrong_answers with the same POS/Chunking as the right_answer. Once done, proceed to the 
-            # final wrong_answer.
-            
-            if data['same_chunking_tag_answer'][i] != list():
-                wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, \
-                                                                          i, "chunking", plausible_answer_array, premise)
-            
-            # If the POS/Chunking of the right_answer cannot be detected (NULL) or context/premise 
-            # does not contain any of NER of right_answer, then the final wrong_answer will be chosen 
-            # selected random word from premise.
-            
-            else:
-                properties = "No same tag detected, search random word from premise"
-                wrong_answer = overlap_checking_with_random_word(premise, right_answer)
-                plausible_answer_array = list()
-        
-        data['properties'][i] = properties
-        data['wrong_answer'][i] = wrong_answer
-        data['no_answer'][i] = NO_ANSWER_STATEMENT
-        data['plausible_answer_based_on_method'][i] = list(set(plausible_answer_array))
-            
-    return data       
-
-
+    return pd.DataFrame(result)
+    
 # In[124]:
 
 
