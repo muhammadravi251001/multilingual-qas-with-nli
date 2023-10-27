@@ -163,7 +163,13 @@ if __name__ == "__main__":
         return concatenated_dataset
     
     if (DATA_NAME == "indonli"):
-        data_nli = load_dataset("indonli")
+        
+        data_files = {"train": "data_indonli_train_df.csv", 
+                    "validation": "data_indonli_valdf.csv", 
+                    "test": "data_indonli_test_df.csv"}
+
+        dataset = load_dataset(INDONESIAN_DATASET_URL, data_files=data_files)
+        data_nli = create_data_dict(dataset)
 
     elif (DATA_NAME == "indonli_mnli"):
         
