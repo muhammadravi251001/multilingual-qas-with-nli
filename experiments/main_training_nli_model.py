@@ -165,7 +165,7 @@ if __name__ == "__main__":
     if (DATA_NAME == "indonli"):
         
         data_files = {"train": "data_indonli_train_df.csv", 
-                    "validation": "data_indonli_valdf.csv", 
+                    "validation": "data_indonli_val_df.csv", 
                     "test": "data_indonli_test_df.csv"}
 
         dataset = load_dataset(INDONESIAN_DATASET_URL, data_files=data_files)
