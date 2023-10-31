@@ -34,6 +34,7 @@ if __name__ == "__main__":
     BATCH_SIZE = int(args.batch_size)
     GRADIENT_ACCUMULATION = int(args.gradient_accumulation)
 
+    INDONESIAN_DATASET_URL = "muhammadravi251001/indonesian-nli-and-qa"
     if HUB_TOKEN == "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": USER = "muhammadravi251001"
 
     print("Training NLI model started!")
@@ -97,16 +98,143 @@ if __name__ == "__main__":
     label2id = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
 
     def remove_none_type(data):
-        for i in tqdm(range(len(data))):
-            premise_type = type(data['premise'][i])
-            hypothesis_type = type(data['hypothesis'][i])
-            label_type = type(data['label'][i])
-            if premise_type != str or hypothesis_type != str or label_type != str:
-                data.drop(i, inplace=True)
-                data.reset_index(drop=True) 
-        return data
+    
+        premise_type = data['premise'].apply(lambda x: isinstance(x, str))
+        hypothesis_type = data['hypothesis'].apply(lambda x: isinstance(x, str))
+        label_type = data['label'].apply(lambda x: isinstance(x, int))
 
-    if (DATA_NAME == "kornli"):
+        data = data[premise_type & hypothesis_type & label_type]
+
+        data.reset_index(drop=True, inplace=True)
+
+        return data
+    
+    def create_data_dict(dataset):
+        
+        selected_columns = ["premise", "hypothesis", "label"]
+
+        df_train = pd.DataFrame(dataset["train"])
+        df_train = df_train[selected_columns]
+
+        df_validation = pd.DataFrame(dataset["validation"])
+        df_validation = df_validation[selected_columns]
+
+        df_test = pd.DataFrame(dataset["test"])
+        df_test = df_test[selected_columns]
+
+        df_train['label'] = df_train['label'].replace(label2id).astype('int')
+        df_validation['label'] = df_validation['label'].replace(label2id).astype('int')
+        df_test['label'] = df_test['label'].replace(label2id).astype('int')
+
+        df_train = remove_none_type(df_train)
+        df_validation = remove_none_type(df_validation)
+        df_test = remove_none_type(df_test)
+
+        train_dataset = Dataset.from_dict(df_train)
+        validation_dataset = Dataset.from_dict(df_validation)
+        test_dataset = Dataset.from_dict(df_test)
+
+        data_nli = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
+        
+        return data_nli
+    
+    def concatenate_data_dict(dataset1, dataset2):
+
+        df_1_train = pd.DataFrame(dataset1['train'])
+        df_1_validation = pd.DataFrame(dataset1['validation'])
+        df_1_test = pd.DataFrame(dataset1['test'])
+
+        df_2_train = pd.DataFrame(dataset2['train'])
+        df_2_validation = pd.DataFrame(dataset2['validation'])
+        df_2_test = pd.DataFrame(dataset2['test'])
+
+        df_train = pd.concat([df_1_train, df_2_train])
+        df_validation = pd.concat([df_1_validation, df_2_validation])
+        df_test = pd.concat([df_1_test, df_2_test])
+
+        train_dataset = Dataset.from_dict(df_train)
+        validation_dataset = Dataset.from_dict(df_validation)
+        test_dataset = Dataset.from_dict(df_test)
+
+        concatenated_dataset = DatasetDict({"train": train_dataset, 
+                                            "validation": validation_dataset, 
+                                            "test": test_dataset})
+        
+        return concatenated_dataset
+    
+    if (DATA_NAME == "indonli"):
+        
+        data_files = {"train": "data_indonli_train_df.csv", 
+                    "validation": "data_indonli_val_df.csv", 
+                    "test": "data_indonli_test_df.csv"}
+
+        dataset = load_dataset(INDONESIAN_DATASET_URL, data_files=data_files)
+        data_nli = create_data_dict(dataset)
+
+    elif (DATA_NAME == "indonli_mnli"):
+        
+        data_files = {"train": "data_augmented_indonli_mnli_train_df.csv", 
+                    "validation": "data_augmented_indonli_mnli_val_df.csv", 
+                    "test": "data_augmented_indonli_mnli_test_df.csv"}
+
+        dataset = load_dataset(INDONESIAN_DATASET_URL, data_files=data_files)
+        data_nli = create_data_dict(dataset)
+
+    elif (DATA_NAME == "indonli_mnli_idkmrc-nli"):
+        
+        data_augmented_files = {"train": "data_augmented_indonli_mnli_train_df.csv", 
+                                "validation": "data_augmented_indonli_mnli_val_df.csv", 
+                                "test": "data_augmented_indonli_mnli_test_df.csv"}
+
+        dataset_aug = load_dataset(INDONESIAN_DATASET_URL, data_files=data_augmented_files)
+        data_nli_aug = create_data_dict(dataset_aug)
+
+        data_synthetic_files = {"train": "idk-mrc_nli_train_df.csv", 
+                                "validation": "idk-mrc_nli_val_df.csv", 
+                                "test": "idk-mrc_nli_test_df.csv"}
+
+        dataset_syn = load_dataset(INDONESIAN_DATASET_URL, data_files=data_synthetic_files)
+        data_nli_syn = create_data_dict(dataset_syn)
+
+        data_nli = concatenate_data_dict(data_nli_aug, data_nli_syn)
+
+    elif (DATA_NAME == "indonli_mnli_tydiqaid-nli"):
+        
+        data_augmented_files = {"train": "data_augmented_indonli_mnli_train_df.csv", 
+                                "validation": "data_augmented_indonli_mnli_val_df.csv", 
+                                "test": "data_augmented_indonli_mnli_test_df.csv"}
+
+        dataset_aug = load_dataset(INDONESIAN_DATASET_URL, data_files=data_augmented_files)
+        data_nli_aug = create_data_dict(dataset_aug)
+
+        data_synthetic_files = {"train": "tydi-qa-id_nli_train_df.csv", 
+                                "validation": "tydi-qa-id_nli_val_df.csv", 
+                                "test": "tydi-qa-id_nli_test_df.csv"}
+
+        dataset_syn = load_dataset(INDONESIAN_DATASET_URL, data_files=data_synthetic_files)
+        data_nli_syn = create_data_dict(dataset_syn)
+
+        data_nli = concatenate_data_dict(data_nli_aug, data_nli_syn)
+
+    elif (DATA_NAME == "indonli_mnli_squadid-nli"):
+        
+        data_augmented_files = {"train": "data_augmented_indonli_mnli_train_df.csv", 
+                                "validation": "data_augmented_indonli_mnli_val_df.csv", 
+                                "test": "data_augmented_indonli_mnli_test_df.csv"}
+
+        dataset_aug = load_dataset(INDONESIAN_DATASET_URL, data_files=data_augmented_files)
+        data_nli_aug = create_data_dict(dataset_aug)
+
+        data_synthetic_files = {"train": "squad-id_nli_train_df.csv", 
+                                "validation": "squad-id_nli_val_df.csv", 
+                                "test": "squad-id_nli_test_df.csv"}
+
+        dataset_syn = load_dataset(INDONESIAN_DATASET_URL, data_files=data_synthetic_files)
+        data_nli_syn = create_data_dict(dataset_syn)
+
+        data_nli = concatenate_data_dict(data_nli_aug, data_nli_syn)
+
+    elif (DATA_NAME == "kornli"):
 
         if (os.path.exists('./multinli.train.ko.tsv') == False):
             wget.download("https://raw.githubusercontent.com/kakaobrain/kor-nlu-datasets/master/KorNLI/multinli.train.ko.tsv")
@@ -149,38 +277,6 @@ if __name__ == "__main__":
         df_train['label'] = df_train['label'].replace(label2id).astype('int')
         df_validation['label'] = df_validation['label'].replace(label2id).astype('int')
         df_test['label'] = df_test['label'].replace(label2id).astype('int')
-
-        train_dataset = Dataset.from_dict(df_train)
-        validation_dataset = Dataset.from_dict(df_validation)
-        test_dataset = Dataset.from_dict(df_test)
-
-        data_nli = DatasetDict({"train": train_dataset, "validation": validation_dataset, "test": test_dataset})
-
-    elif (DATA_NAME == "multilingual"):
-        data_files = {"train": "multilingual_nli_train_df.csv", 
-                    "validation": "multilingual_nli_validation_df.csv", 
-                    "test": "multilingual_nli_test_df.csv"}
-
-        dataset = load_dataset("muhammadravi251001/multilingual-nli-dataset", data_files=data_files)
-
-        selected_columns = ["premise", "hypothesis", "label"]
-
-        df_train = pd.DataFrame(dataset["train"])
-        df_train = df_train[selected_columns]
-
-        df_validation = pd.DataFrame(dataset["validation"])
-        df_validation = df_validation[selected_columns]
-
-        df_test = pd.DataFrame(dataset["test"])
-        df_test = df_test[selected_columns]
-
-        df_train['label'] = df_train['label'].replace(label2id).astype('int')
-        df_validation['label'] = df_validation['label'].replace(label2id).astype('int')
-        df_test['label'] = df_test['label'].replace(label2id).astype('int')
-
-        df_train = remove_none_type(df_train)
-        df_validation = remove_none_type(df_validation)
-        df_test = remove_none_type(df_test)
 
         train_dataset = Dataset.from_dict(df_train)
         validation_dataset = Dataset.from_dict(df_validation)
