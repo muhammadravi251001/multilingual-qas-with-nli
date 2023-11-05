@@ -333,8 +333,8 @@ def nlp_tools_ner(sentence):
                           return_tensors="pt",
                           **tokenizer_kwargs)
 
-    ids = inputs["input_ids"]
-    mask = inputs["attention_mask"]
+    ids = inputs["input_ids"].to(device)
+    mask = inputs["attention_mask"].to(device)
 
     outputs = model_ner(ids, attention_mask=mask)
     logits = outputs.logits
@@ -386,8 +386,8 @@ def nlp_tools_chunking(sentence):
                           return_tensors="pt",
                           **tokenizer_kwargs)
 
-    ids = inputs["input_ids"]
-    mask = inputs["attention_mask"]
+    ids = inputs["input_ids"].to(device)
+    mask = inputs["attention_mask"].to(device)
 
     outputs = model_chunking(ids, attention_mask=mask)
     logits = outputs.logits

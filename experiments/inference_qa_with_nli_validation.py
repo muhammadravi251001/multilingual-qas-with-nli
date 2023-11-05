@@ -55,7 +55,7 @@ if __name__ == "__main__":
         MODEL_SC_NAME = "muhammadravi251001/fine-tuned-NLI-indonli_mnli_squadid-nli-with-xlm-roberta-large"
     
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '5'
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
@@ -293,19 +293,20 @@ if __name__ == "__main__":
     nlp_tg_eng = pipeline(task="text2text-generation", model=MODEL_TG_ENG_NAME, tokenizer=MODEL_TG_ENG_NAME, device=torch.cuda.current_device(), **tokenizer_kwargs)
     """
     
-    def nlp_qa(question, context):
+    def nlp_qa(question, context, top_k=MAXIMUM_SEARCH_ITER):
         
         inputs = tokenizer_qa(question, context, 
                               return_tensors="pt",
                               **tokenizer_kwargs)
         
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         outputs = model_qa(**inputs)
         
         sorted_start_logits = torch.argsort(outputs.start_logits)
         sorted_end_logits = torch.argsort(outputs.end_logits)
 
         answer_array = []
-        for i in range(1, (MAXIMUM_SEARCH_ITER + 1)):
+        for i in range(1, (top_k + 1)):
             
             start_index = sorted_start_logits[0, -i]
             end_index = sorted_end_logits[0, -i]
@@ -322,6 +323,7 @@ if __name__ == "__main__":
                               return_tensors="pt",
                               **tokenizer_kwargs)
         
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         outputs = model_sc(**inputs)
 
         label_id = torch.argmax(outputs.logits).item()
@@ -337,8 +339,8 @@ if __name__ == "__main__":
                         return_tensors="pt",
                         **tokenizer_kwargs)
         
-        ids = inputs["input_ids"]
-        mask = inputs["attention_mask"]
+        ids = inputs["input_ids"].to(device)
+        mask = inputs["attention_mask"].to(device)
 
         outputs = model_ner(ids, attention_mask=mask)
         logits = outputs.logits
@@ -374,14 +376,14 @@ if __name__ == "__main__":
 
     def nlp_tg_ind(prompt):
         
-        input_ids = tokenizer_tg_ind(prompt, return_tensors="pt").input_ids
+        input_ids = tokenizer_tg_ind(prompt, return_tensors="pt").input_ids.to(device)
         
-        output = model_tg_ind.generate(input_ids, 
-                                       max_length=50, 
+        output = model_tg_ind.generate(input_ids,
                                        num_return_sequences=1, 
                                        no_repeat_ngram_size=2, 
                                        top_k=50, 
-                                       top_p=0.95)
+                                       top_p=0.95,
+                                       **tokenizer_kwargs)
         
         generated_text = tokenizer_tg_ind.batch_decode(output, skip_special_tokens=True)
         
@@ -389,14 +391,14 @@ if __name__ == "__main__":
     
     def nlp_tg_eng(prompt):
         
-        input_ids = tokenizer_tg_eng(prompt, return_tensors="pt").input_ids
+        input_ids = tokenizer_tg_eng(prompt, return_tensors="pt").input_ids.to(device)
         
-        output = model_tg_eng.generate(input_ids, 
-                                       max_length=50, 
+        output = model_tg_eng.generate(input_ids,
                                        num_return_sequences=1, 
                                        no_repeat_ngram_size=2, 
                                        top_k=50, 
-                                       top_p=0.95)
+                                       top_p=0.95,
+                                       **tokenizer_kwargs)
         
         generated_text = tokenizer_tg_eng.batch_decode(output, skip_special_tokens=True)
         
@@ -464,7 +466,7 @@ if __name__ == "__main__":
             
             label_array = []
             for hypothesis in pred_hypothesis_arr:
-                pred_label = nlp_sc({'text': context, 'text_pair': hypothesis}, **tokenizer_kwargs)
+                pred_label = nlp_sc({'text': context, 'text_pair': hypothesis})
                 label_array.append(pred_label)
             assert type(label_array) == list
             return label_array
@@ -486,8 +488,8 @@ if __name__ == "__main__":
             gold_hypothesis_array.append(smoothing(question, gold_answer, TYPE_SMOOTHING))
             
             pred_answer = retrieve_answer_text_from_list(nlp_qa(context=context, 
-                                                                        question=question, 
-                                                                        top_k=MAXIMUM_SEARCH_ITER))
+                                                                question=question, 
+                                                                top_k=MAXIMUM_SEARCH_ITER))
             
             pred_hypothesis = smoothing_from_list(pred_answer, question)
             pred_label = retrieve_label_from_list(pred_hypothesis, context)
