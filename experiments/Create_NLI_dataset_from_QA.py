@@ -1,18 +1,4 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # Define tool and model of the tool
-
-# In[78]:
-
-
-# get_ipython().system('nvidia-smi')
-
-
 # Below, it is some settings to run in my local.
-
-# In[79]:
-
 
 import os, torch
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -20,10 +6,7 @@ os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 # You can tweak your settings too in code below.
-
-# In[80]:
 import argparse
 import sys
 
@@ -54,9 +37,6 @@ TASK_PARAPHRASER_NAME = "text2text-generation"
 MODEL_PARAPHRASER_NAME = ""
 
 # # Import anything
-
-# In[81]:
-
 
 import transformers
 import evaluate
@@ -102,17 +82,9 @@ from transformers import (
     pipeline
 )
 
-
 # # Retrieve QA dataset
 
-# In[82]:
-
-
 print("PROGRAM STARTED")
-
-
-# In[83]:
-
 
 if (DATA_NAME == "squad-id"):
     conhelps = NusantaraConfigHelper()
@@ -283,18 +255,10 @@ elif (DATA_NAME == "tydi-qa-id"):
 # # Convert to NLI, with hypothesis being just do concat question & answer
 
 # ## Convert Dataset to DataFrame format
-
-# In[84]:
-
-
 # 42, the answer to life the universe and everything
 
 seed_value = 42
 random.seed(seed_value)
-
-
-# In[85]:
-
 
 # If you want to training all of the data (prod),
 # this code will convert to DataFrame.
@@ -317,10 +281,6 @@ else:
 
 
 # ## Retrieve answer text only
-
-# In[86]:
-
-
 # Only retrieve answer text
 # Because, we do not use answer_start
 # and answer_end
@@ -330,33 +290,15 @@ def retrieve_answer_text(data):
         data['answer'][i] = data['answer'][i]['text']
     return data
 
-
-# In[87]:
-
-
 data_qas_train_df = retrieve_answer_text(data_qas_train_df)
 data_qas_val_df = retrieve_answer_text(data_qas_val_df)
 data_qas_test_df = retrieve_answer_text(data_qas_test_df)
 
 
 # ## Create NLI dataset from copy of QA dataset above
-
-# In[88]:
-
-
 data_nli_train_df = data_qas_train_df.copy()
 data_nli_val_df = data_qas_val_df.copy()
 data_nli_test_df = data_qas_test_df.copy()
-
-
-# In[89]:
-
-
-data_qas_train_df
-
-
-# In[90]:
-
 
 data = {
     'context': ["Tanpa beasiswa, Ogilvy tidak bisa kuliah di Fettes atau Oxford University karena bisnis ayahnya terkena dampak depresi pertengahan dekade 1920-an. Namun, kuliahnya tidak berhasil dan ia meninggalkan Oxford untuk ke Paris pada tahun 1931 tempat ia menjadi chef magang di Majestic Hotel. Setelah setahun, ia kembali ke Skotlandia dan mulai menjual kompor masak AGA dari rumah ke rumah. Keberhasilannya dalam menjual kompor ini membuatnya dikenal sebagai karyawan, yang kemudian memintanya menulis manual instruksi, The Theory and Practice of Selling the AGA Cooker, untuk staf penjualan lainnya. Tiga puluh tahun kemudian, editor majalah Fortune menyebutnya sebagai manual instruksi penjualan terbaik yang pernah ditulis."],
@@ -364,39 +306,134 @@ data = {
     'answer': ["ogilvy tidak bisa kuliah di fettes atau oxford university karena bisnis ayahnya terkena dampak depresi pertengahan dekade 1920-an."]
 }
 
-
-# In[91]:
-
-
-#data_debug = pd.DataFrame(data)
-#data_debug
-
-
 # ## Convert context pair to premise (only renaming column)
-
-# In[92]:
-
-
 # Renaming it, just for consistency
 
 data_nli_train_df = data_nli_train_df.rename(columns={"context": "premise"})
 data_nli_val_df = data_nli_val_df.rename(columns={"context": "premise"})
 data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
-
-# In[93]:
-
-
 #data_debug = data_debug.rename(columns={"context": "premise"})
 
-
 # # Add contradiction label cases
+tokenizer_kwargs = {'truncation': True, 'model_max_length': 512}
 
+tokenizer_ner = AutoTokenizer.from_pretrained(MODEL_NER_NAME)
+model_ner = AutoModelForTokenClassification.from_pretrained(MODEL_NER_NAME)
+model_ner = model_ner.to(device)
+
+tokenizer_chunking = AutoTokenizer.from_pretrained(MODEL_CHUNKING_NAME)
+model_chunking = AutoModelForTokenClassification.from_pretrained(MODEL_CHUNKING_NAME)
+model_chunking = model_chunking.to(device)
+
+def nlp_tools_ner(sentence):
+    
+    inputs = tokenizer_ner(sentence,
+                          return_offsets_mapping=True,
+                          return_tensors="pt",
+                          **tokenizer_kwargs)
+
+    ids = inputs["input_ids"]
+    mask = inputs["attention_mask"]
+
+    outputs = model_ner(ids, attention_mask=mask)
+    logits = outputs.logits
+
+    active_logits = logits.view(-1, model_ner.config.num_labels)
+    flattened_predictions = torch.argmax(active_logits, dim=1)
+
+    tokens = tokenizer_ner.tokenize(sentence)
+    token_predictions = [model_ner.config.id2label[i] for i in flattened_predictions.cpu().numpy()]
+
+    offset_mapping = inputs["offset_mapping"].squeeze().tolist()
+
+    results = []
+
+    entity = None
+    start_index = 0
+
+    for i, (token, token_pred, mapping) in enumerate(zip(tokens, token_predictions, offset_mapping)):
+        if token_pred != 'O':
+            if entity:
+                if entity[2:] != token_pred[2:]:
+                    results.append({
+                        'entity': entity[2:],
+                        'score': 1.0,
+                        'index': i - 1,
+                        'word': tokens[start_index:i][0],
+                        'start': start_index,
+                        'end': i - 1
+                    })
+            entity = token_pred
+            start_index = i
+
+    if entity:
+        results.append({
+            'entity': entity[2:],
+            'score': 1.0,
+            'index': i,
+            'word': tokens[start_index:][0],
+            'start': start_index,
+            'end': i
+        })
+
+    return results
+
+def nlp_tools_chunking(sentence):
+    
+    inputs = tokenizer_chunking(sentence,
+                          return_offsets_mapping=True,
+                          return_tensors="pt",
+                          **tokenizer_kwargs)
+
+    ids = inputs["input_ids"]
+    mask = inputs["attention_mask"]
+
+    outputs = model_chunking(ids, attention_mask=mask)
+    logits = outputs.logits
+
+    active_logits = logits.view(-1, model_chunking.config.num_labels)
+    flattened_predictions = torch.argmax(active_logits, dim=1)
+
+    tokens = tokenizer_chunking.tokenize(sentence)
+    token_predictions = [model_chunking.config.id2label[i] for i in flattened_predictions.cpu().numpy()]
+
+    offset_mapping = inputs["offset_mapping"].squeeze().tolist()
+
+    results = []
+
+    entity = None
+    start_index = 0
+
+    for i, (token, token_pred, mapping) in enumerate(zip(tokens, token_predictions, offset_mapping)):
+        if token_pred != 'O':
+            if entity:
+                if entity[2:] != token_pred[2:]:
+                    results.append({
+                        'entity': entity[2:],
+                        'score': 1.0,
+                        'index': i - 1,
+                        'word': tokens[start_index:i][0],
+                        'start': start_index,
+                        'end': i - 1
+                    })
+            entity = token_pred
+            start_index = i
+
+    if entity:
+        results.append({
+            'entity': entity[2:],
+            'score': 1.0,
+            'index': i,
+            'word': tokens[start_index:][0],
+            'start': start_index,
+            'end': i
+        })
+
+    return results
+
+""" Uncomment this if you want to use pipeline instead of .predict()
 # ## Import pipeline to create contradiction cases
-
-# In[94]:
-
-
 nlp_tools_ner = pipeline(task = TASK_NER_NAME, 
                      model = MODEL_NER_NAME, 
                      tokenizer = AutoTokenizer.from_pretrained(MODEL_NER_NAME, 
@@ -404,33 +441,22 @@ nlp_tools_ner = pipeline(task = TASK_NER_NAME,
                                                                truncation=True),
                      aggregation_strategy = 'simple')
 
-
-# In[95]:
-
-
 nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME, 
                      model = MODEL_CHUNKING_NAME, 
                      tokenizer = AutoTokenizer.from_pretrained(MODEL_CHUNKING_NAME, 
                                                                model_max_length=512, 
                                                                truncation=True),
                      aggregation_strategy = 'simple')
+"""
 
 
 # ## Add NER and chunking tag column in DataFrame
-
-# In[96]:
-
-
 # This code useful for cleaning the data (text)
 
 def remove_space_after_number_and_punctuation(text):
     pattern = r'(\d+)\s*([.,])\s*(?=\S|$)'
     cleaned_text = re.sub(pattern, r'\1\2', text)
     return cleaned_text
-
-
-# In[97]:
-
 
 # This code useful for tagging the entire premise
 # with NER and chunking tools
@@ -452,20 +478,12 @@ def add_premise_tag(data, tag, index, premise_array, ner=nlp_tools_ner, chunking
 
     return premise_array
 
-
-# In[98]:
-
-
 # Function for clean the text off punctuation
 
 def remove_punctuation(text):
     cleaned_text = text.lstrip(string.punctuation)
     cleaned_text = cleaned_text.rstrip(string.punctuation)
     return cleaned_text
-
-
-# In[99]:
-
 
 # This code useful for tagging the entire answer
 # with NER and chunking tools
@@ -569,10 +587,6 @@ def add_answer_tag(answer, tag, premise_array, ner=nlp_tools_ner, chunking=nlp_t
         
     return tag_answer_list
 
-
-# In[100]:
-
-
 # This is a helper code to run
 # process for add tag to entire premise
 # and answer
@@ -601,27 +615,14 @@ def add_ner_and_chunking_all_tag(data):
     
     return data
 
-
-# In[101]:
-
-
 data_nli_train_df = add_ner_and_chunking_all_tag(data_nli_train_df)
 data_nli_val_df = add_ner_and_chunking_all_tag(data_nli_val_df)
 data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
-
-# In[102]:
-
-
 #data_debug = add_ner_and_chunking_all_tag(data_debug)
 #data_debug
 
-
 # # Create wrong answer
-
-# In[103]:
-
-
 # This function useful for sorting the closest distance
 # by using embedding
 
@@ -640,11 +641,6 @@ def return_similarity_sorted_array(right_answer, sentence_array, model=model_sim
     
     return sorted_array
 
-
-
-# In[104]:
-
-
 # This function useful for
 # removing value with hash.
 # Because, from label-tagging before
@@ -653,10 +649,6 @@ def return_similarity_sorted_array(right_answer, sentence_array, model=model_sim
 
 def remove_values_with_hash(arr):
     return [item for item in arr if "#" not in item]
-
-
-# In[105]:
-
 
 # Retrieve stopword from all language
 
@@ -668,10 +660,6 @@ else:
     print("Failed to download stopword JSON.")
 
 stopword_data = set([item for sublist in list(stopword_data.values()) for item in sublist])
-
-
-# In[106]:
-
 
 # This function just retrieve random word
 # of entire premise
@@ -703,10 +691,6 @@ def select_random_word(text, answer, stopword_data=stopword_data):
     
     return random_word.strip()
 
-
-# In[107]:
-
-
 # This function useful for find the same order
 # of sequence, this function will used in
 # chunking domain, to classify whether an
@@ -737,10 +721,6 @@ def find_order(premise, answer):
         i += 1
     
     return results
-
-
-# In[108]:
-
 
 # This function useful for grouping same tag-label 
 # between answer and word (or sentence) in an entire premise
@@ -782,20 +762,12 @@ def grouping_same_tag(tag_answers, tag_premises, same_tag_array, tag):
     
     return remove_values_with_hash(same_tag_array)
 
-
-# In[109]:
-
-
 # This function useful for
 # checking text if only
 # contain punctuation, no words at all 
 
 def contains_only_punctuation(text):
     return all(char in string.punctuation for char in text)
-
-
-# In[110]:
-
 
 # This function useful for
 # filter overlapping right answer and wrong answer
@@ -828,10 +800,6 @@ def filtering_plausible_answer(answer, plausible_answer_array):
                 final_plausible_answer_array.append(plausible_answer)
     
     return final_plausible_answer_array
-
-
-# In[111]:
-
 
 # This function useful for
 # detecting number, date, time
@@ -868,10 +836,6 @@ def check_regex(right_answer, plausible_answer_array):
                                                                              )]
     
     return plausible_answer_array
-
-
-# In[112]:
-
 
 # This function useful for
 # overlap checking
@@ -911,10 +875,6 @@ def overlap_checking_with_random_word(premise,
         wrong_answer = select_random_word(premise, right_answer)
     
     return wrong_answer
-
-
-# In[118]:
-
 
 # This function useful for
 # sorting similarity and
@@ -968,10 +928,6 @@ def return_wrong_and_plausible(data, right_answer, index, tag, plausible_answer_
     
     return wrong_answer, plausible_answer_array, properties
 
-
-# In[119]:
-
-
 # This function useful for
 # matching regex in the first
 # section on create wrong answer
@@ -998,10 +954,6 @@ def matching_regex(right_answer, chunking_tag_premise):
                 plausible_answer_array.append(word)
 
     return plausible_answer_array
-
-
-# In[120]:
-
 
 # This function useful for
 # cleaning the reference off the premise
@@ -1086,33 +1038,18 @@ def create_wrong_answer(data, batch_size=32, NO_ANSWER_STATEMENT=NO_ANSWER_STATE
             })
 
     return pd.DataFrame(result)
-    
-# In[124]:
-
 
 data_nli_train_df = create_wrong_answer(data_nli_train_df)
 data_nli_val_df = create_wrong_answer(data_nli_val_df)
 data_nli_test_df = create_wrong_answer(data_nli_test_df)
 
-
-# In[123]:
-
-
 #data_debug = create_wrong_answer(data_debug)
 #data_debug
-
-
-# In[357]:
-
 
 #print("Right answer:", data_debug['answer'][0])
 #print()
 #print(data_debug['plausible_answer_based_on_method'][0])
 #print("Wrong answer:", data_debug['wrong_answer'][0])
-
-
-# In[297]:
-
 
 #print("Premise:", data_debug['premise'][0])
 #print("Question:", data_debug['question'][0])
@@ -1120,11 +1057,7 @@ data_nli_test_df = create_wrong_answer(data_nli_test_df)
 #print(data_debug['ner_tag_premise'][0])
 #print(data_debug['chunking_tag_premise'][0])
 
-
 # # Split to two dataset: right dataset & wrong dataset
-
-# In[ ]:
-
 
 # This method is just only
 # for aesthetics of column number
@@ -1138,10 +1071,6 @@ def move_to_column_number(data, column_name="hypothesis", column_num=3):
     data = data[cols]
     
     return data
-
-
-# In[ ]:
-
 
 # Creating answerable right (entailment label) dataset
 
@@ -1158,10 +1087,6 @@ data_nli_answerable_right_test_df = data_nli_answerable_right_test_df[data_nli_a
 data_nli_answerable_right_train_df = data_nli_answerable_right_train_df.reset_index(drop=True)
 data_nli_answerable_right_val_df = data_nli_answerable_right_val_df.reset_index(drop=True)
 data_nli_answerable_right_test_df = data_nli_answerable_right_test_df.reset_index(drop=True)
-
-
-# In[ ]:
-
 
 # Creating answerable wrong (contradiction label) dataset
 
@@ -1187,10 +1112,6 @@ data_nli_answerable_wrong_train_df = move_to_column_number(data_nli_answerable_w
 data_nli_answerable_wrong_val_df = move_to_column_number(data_nli_answerable_wrong_val_df, "answer", 2)
 data_nli_answerable_wrong_test_df = move_to_column_number(data_nli_answerable_wrong_test_df, "answer", 2)
 
-
-# In[ ]:
-
-
 # Creating unanswerable right (entailment label) and no-answer dataset
 
 columns_to_exclude = ['wrong_answer', 'no_answer']
@@ -1202,10 +1123,6 @@ data_nli_unanswerable_right_test_df = data_nli_test_df.drop(columns=columns_to_e
 data_nli_unanswerable_right_train_df = data_nli_unanswerable_right_train_df[data_nli_unanswerable_right_train_df['answer'] == '']
 data_nli_unanswerable_right_val_df = data_nli_unanswerable_right_val_df[data_nli_unanswerable_right_val_df['answer'] == '']
 data_nli_unanswerable_right_test_df = data_nli_unanswerable_right_test_df[data_nli_unanswerable_right_test_df['answer'] == '']
-
-
-# In[ ]:
-
 
 # Creating unanswerable wrong (contradiction label) and no-answer dataset
 
@@ -1227,10 +1144,6 @@ data_nli_unanswerable_wrong_train_df = move_to_column_number(data_nli_unanswerab
 data_nli_unanswerable_wrong_val_df = move_to_column_number(data_nli_unanswerable_wrong_val_df, "answer", 2)
 data_nli_unanswerable_wrong_test_df = move_to_column_number(data_nli_unanswerable_wrong_test_df, "answer", 2)
 
-
-# In[ ]:
-
-
 # Rather than duplicating the no-answer statement, 
 # it's better to remove the excessing row ones.
 
@@ -1243,10 +1156,6 @@ def balancing_data(data1, data2):
         data2 = data2.sample(n=len(data1))
         
     return data1, data2
-
-
-# In[ ]:
-
 
 data_nli_unanswerable_right_train_df, data_nli_unanswerable_wrong_train_df = balancing_data(data_nli_unanswerable_right_train_df,
                                                                                             data_nli_unanswerable_wrong_train_df)
@@ -1266,10 +1175,6 @@ data_nli_unanswerable_right_test_df = data_nli_unanswerable_right_test_df.reset_
 data_nli_unanswerable_wrong_train_df = data_nli_unanswerable_wrong_train_df.reset_index(drop=True)
 data_nli_unanswerable_wrong_val_df = data_nli_unanswerable_wrong_val_df.reset_index(drop=True)
 data_nli_unanswerable_wrong_test_df = data_nli_unanswerable_wrong_test_df.reset_index(drop=True)
-
-
-# In[ ]:
-
 
 # For debug purpose
 
@@ -1299,21 +1204,6 @@ print("TEST:", len(data_nli_unanswerable_wrong_test_df))
 
 # # Convert question-answer pair to hypothesis
 
-# In[ ]:
-
-
-# Maybe we can try this approach
-
-#nlp_tools_paraphraser = pipeline(task = TASK_PARAPHRASER_NAME, 
-#                     model = MODEL_PARAPHRASER_NAME, 
-#                     tokenizer = AutoTokenizer.from_pretrained(MODEL_PARAPHRASER_NAME, 
-#                                                               model_max_length=512, 
-#                                                               truncation=True))
-
-
-# In[ ]:
-
-
 # This function useful for
 # retrieve hypothesis from
 # question and answer
@@ -1340,10 +1230,6 @@ def convert_question_and_answer_to_hypothesis(data, NO_ANSWER_STATEMENT=NO_ANSWE
     
     return data
 
-
-# In[ ]:
-
-
 data_nli_answerable_right_train_df = convert_question_and_answer_to_hypothesis(data_nli_answerable_right_train_df)
 data_nli_answerable_right_val_df = convert_question_and_answer_to_hypothesis(data_nli_answerable_right_val_df)
 data_nli_answerable_right_test_df = convert_question_and_answer_to_hypothesis(data_nli_answerable_right_test_df)
@@ -1351,10 +1237,6 @@ data_nli_answerable_right_test_df = convert_question_and_answer_to_hypothesis(da
 data_nli_answerable_right_train_df = move_to_column_number(data_nli_answerable_right_train_df, "hypothesis", 3)
 data_nli_answerable_right_val_df = move_to_column_number(data_nli_answerable_right_val_df, "hypothesis", 3)
 data_nli_answerable_right_test_df = move_to_column_number(data_nli_answerable_right_test_df, "hypothesis", 3)
-
-
-# In[ ]:
-
 
 data_nli_answerable_wrong_train_df = convert_question_and_answer_to_hypothesis(data_nli_answerable_wrong_train_df)
 data_nli_answerable_wrong_val_df = convert_question_and_answer_to_hypothesis(data_nli_answerable_wrong_val_df)
@@ -1364,10 +1246,6 @@ data_nli_answerable_wrong_train_df = move_to_column_number(data_nli_answerable_w
 data_nli_answerable_wrong_val_df = move_to_column_number(data_nli_answerable_wrong_val_df, "hypothesis", 3)
 data_nli_answerable_wrong_test_df = move_to_column_number(data_nli_answerable_wrong_test_df, "hypothesis", 3)
 
-
-# In[ ]:
-
-
 data_nli_unanswerable_right_train_df = convert_question_and_answer_to_hypothesis(data_nli_unanswerable_right_train_df)
 data_nli_unanswerable_right_val_df = convert_question_and_answer_to_hypothesis(data_nli_unanswerable_right_val_df)
 data_nli_unanswerable_right_test_df = convert_question_and_answer_to_hypothesis(data_nli_unanswerable_right_test_df)
@@ -1375,10 +1253,6 @@ data_nli_unanswerable_right_test_df = convert_question_and_answer_to_hypothesis(
 data_nli_unanswerable_right_train_df = move_to_column_number(data_nli_unanswerable_right_train_df, "hypothesis", 3)
 data_nli_unanswerable_right_val_df = move_to_column_number(data_nli_unanswerable_right_val_df, "hypothesis", 3)
 data_nli_unanswerable_right_test_df = move_to_column_number(data_nli_unanswerable_right_test_df, "hypothesis", 3)
-
-
-# In[ ]:
-
 
 data_nli_unanswerable_wrong_train_df = convert_question_and_answer_to_hypothesis(data_nli_unanswerable_wrong_train_df)
 data_nli_unanswerable_wrong_val_df = convert_question_and_answer_to_hypothesis(data_nli_unanswerable_wrong_val_df)
@@ -1388,11 +1262,7 @@ data_nli_unanswerable_wrong_train_df = move_to_column_number(data_nli_unanswerab
 data_nli_unanswerable_wrong_val_df = move_to_column_number(data_nli_unanswerable_wrong_val_df, "hypothesis", 3)
 data_nli_unanswerable_wrong_test_df = move_to_column_number(data_nli_unanswerable_wrong_test_df, "hypothesis", 3)
 
-
 # # Assign the label: entailment & contradiction
-
-# In[ ]:
-
 
 data_nli_answerable_right_train_df['label'] = 'entailment'
 data_nli_answerable_right_val_df['label'] = 'entailment'
@@ -1402,10 +1272,6 @@ data_nli_answerable_right_train_df = move_to_column_number(data_nli_answerable_r
 data_nli_answerable_right_val_df = move_to_column_number(data_nli_answerable_right_val_df, "label", 4)
 data_nli_answerable_right_test_df = move_to_column_number(data_nli_answerable_right_test_df, "label", 4)
 
-
-# In[ ]:
-
-
 data_nli_answerable_wrong_train_df['label'] = 'contradiction'
 data_nli_answerable_wrong_val_df['label'] = 'contradiction'
 data_nli_answerable_wrong_test_df['label'] = 'contradiction'
@@ -1414,10 +1280,6 @@ data_nli_answerable_wrong_train_df = move_to_column_number(data_nli_answerable_w
 data_nli_answerable_wrong_val_df = move_to_column_number(data_nli_answerable_wrong_val_df, "label", 4)
 data_nli_answerable_wrong_test_df = move_to_column_number(data_nli_answerable_wrong_test_df, "label", 4)
 
-
-# In[ ]:
-
-
 data_nli_unanswerable_right_train_df['label'] = 'entailment'
 data_nli_unanswerable_right_val_df['label'] = 'entailment'
 data_nli_unanswerable_right_test_df['label'] = 'entailment'
@@ -1425,10 +1287,6 @@ data_nli_unanswerable_right_test_df['label'] = 'entailment'
 data_nli_unanswerable_right_train_df = move_to_column_number(data_nli_unanswerable_right_train_df, "label", 4)
 data_nli_unanswerable_right_val_df = move_to_column_number(data_nli_unanswerable_right_val_df, "label", 4)
 data_nli_unanswerable_right_test_df = move_to_column_number(data_nli_unanswerable_right_test_df, "label", 4)
-
-
-# In[ ]:
-
 
 data_nli_unanswerable_wrong_train_df['label'] = 'contradiction'
 data_nli_unanswerable_wrong_val_df['label'] = 'contradiction'
@@ -1440,9 +1298,6 @@ data_nli_unanswerable_wrong_test_df = move_to_column_number(data_nli_unanswerabl
 
 
 # # Concat the right and wrong NLI to one NLI dataset
-
-# In[ ]:
-
 
 data_nli_train_df_final = pd.concat([data_nli_answerable_right_train_df, 
                                      data_nli_answerable_wrong_train_df,
@@ -1458,10 +1313,6 @@ data_nli_test_df_final = pd.concat([data_nli_answerable_right_test_df,
                                     data_nli_answerable_wrong_test_df,
                                     data_nli_unanswerable_right_test_df,
                                     data_nli_unanswerable_wrong_test_df], axis=0, ignore_index=True)
-
-
-# In[ ]:
-
 
 # For debug purpose,
 # you can modify it too
@@ -1486,10 +1337,6 @@ def debug_data(data):
 # debug_data(data_nli_val_df_final)
 # debug_data(data_nli_test_df_final)
 
-
-# In[ ]:
-
-
 # For debug purpose
 
 print("TRAIN FINAL")
@@ -1503,25 +1350,9 @@ print()
 print("TEST FINAL")
 print(len(data_nli_test_df_final))
 
-
 # # Convert to DataFrame format to CSV
-
-# In[ ]:
-
-
 data_nli_train_df_final.to_csv(f"{DATA_NAME}_nli_train_df.csv", index=False)
 data_nli_val_df_final.to_csv(f"{DATA_NAME}_nli_val_df.csv", index=False)
 data_nli_test_df_final.to_csv(f"{DATA_NAME}_nli_test_df.csv", index=False)
 
-
-# In[ ]:
-
-
 print("PROGRAM FINISHED")
-
-
-# In[ ]:
-
-
-
-
