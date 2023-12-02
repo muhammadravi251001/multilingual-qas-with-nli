@@ -29,6 +29,7 @@ if __name__ == "__main__":
     MODEL_TG_IND_NAME = "Wikidepia/IndoT5-base-paraphrase"
     MODEL_TG_ENG_NAME = "humarin/chatgpt_paraphraser_on_T5_base"
     MODEL_NER_NAME = "ageng-anugrah/indobert-large-p2-finetuned-ner"
+    NO_ANSWER_STATEMENT = "Tidak ada jawaban"
 
     if args.data_name == "squadid": 
         MODEL_QA_NAME = "muhammadravi251001/fine-tuned-DatasetQAS-Squad-ID-with-xlm-roberta-large-without-ITTL-without-freeze-LR-1e-05"
@@ -73,6 +74,7 @@ if __name__ == "__main__":
     from datetime import datetime
     from tqdm import tqdm
     from huggingface_hub import HfApi, create_repo
+    from deep_translator import GoogleTranslator
 
     from datasets import (
         load_dataset, 
@@ -428,16 +430,155 @@ if __name__ == "__main__":
 
         return list(set(entity_array))
 
+    question_word = ['siapa', 'siapakah',
+                    'apa', 'apakah', 'adakah',
+                    'dimana', 'dimanakah', 'darimanakah',
+                    'kapan', 'kapankah',
+                    'bagaimana', 'bagaimanakah',
+                    'kenapa', 'mengapa',
+                    'berapa', 'berapakah', 'seberapa',
+                
+                    'Siapa', 'Siapakah',
+                    'Apa', 'Apakah', 'Adakah',
+                    'Dimana', 'Dimanakah', 'Darimanakah',
+                    'Kapan', 'Kapankah',
+                    'Bagaimana', 'Bagaimanakah',
+                    'Kenapa', 'Mengapa',
+                    'Berapa', 'Berapakah', 'Seberapa'
+                    ]
+    
     def smoothing(question, answer, type):
-        if type == 'just_concat_answer_and_question':
-            hypothesis = f"{question} {answer}"
-        return hypothesis.strip()
 
-    def retrieve_answer_text_from_list(data):
-        answer_text_array = []
-        for i in range(len(data)):
-            answer_text_array.append(data[i]['answer'])
-        return answer_text_array
+        if type == 'replace_first':
+            hypothesis = question.replace('?', '')
+            hypothesis = hypothesis.replace(question.split()[0], answer)
+
+        elif type == 'replace_question_word':
+            
+            for i in question_word:
+                
+                if i in question.split():
+                    hypothesis = question.replace('?', '')
+                    hypothesis = hypothesis.replace(i, answer)
+                    break
+                
+                else:
+                    hypothesis = question.replace('?', '')
+                    hypothesis = f"{hypothesis.lstrip()} adalah {answer}"
+
+        elif type == 'add_adalah':
+            hypothesis = question.replace('?', '')
+            hypothesis = hypothesis.replace(question.split()[0], '')
+            hypothesis = f"{hypothesis} adalah {answer}"
+
+        elif type == 'rule_based':
+            
+            question = question.replace('kah', '')
+            
+            for j in question_word:
+                
+                if j in question.split():
+                    
+                    if j == 'siapa' or j == 'siapakah':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, '').lstrip()
+                        hypothesis = f"{answer} merupakan {hypothesis}"
+                        break
+
+                    elif j == 'apa' or j == 'apakah' or j == 'adakah':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, '').lstrip()
+                        hypothesis = f"{hypothesis} adalah {answer}"
+                        break
+
+                    elif j == 'dimana' or j == 'dimanakah':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, '').lstrip()
+                        hypothesis = f"{hypothesis} di {answer}"
+                        break
+
+                    elif j == 'darimanakah':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, '').lstrip()
+                        hypothesis = f"{hypothesis} dari {answer}"
+                        break
+
+                    elif j == 'kapan' or j == 'kapankah':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, '').lstrip()
+                        hypothesis = f"{hypothesis} pada {answer}"
+                        break
+
+                    elif j == 'bagaimana' or j == 'bagaimanakah':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, '')
+                        hypothesis = f"{hypothesis} adalah {answer}"
+                        break
+
+                    elif j == 'kenapa' or j == 'mengapa':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, 'alasan').lstrip()
+                        hypothesis = f"{hypothesis} adalah karena {answer}"
+                        break
+
+                    elif j == 'berapa' or j == 'berapakah' or j == 'seberapa':
+                        hypothesis = question.replace('?', '')
+                        hypothesis = hypothesis.replace(j, '').lstrip()
+
+                        if 'luas' in hypothesis.split():
+                            hypothesis = hypothesis.replace('luas', '')
+                            hypothesis = f"{hypothesis} memiliki luas {answer}"
+
+                        elif 'jumlah' in hypothesis.split():
+                            hypothesis = hypothesis.replace('jumlah', '')
+                            hypothesis = f"{hypothesis} berjumlah {answer}"
+                            
+                        else: hypothesis = f"{hypothesis} adalah {answer}"
+                            
+                        break
+                    
+                    else: 
+                        hypothesis = question.replace('?', '')
+                        hypothesis = f"{hypothesis.lstrip()} adalah {answer}"
+                        break
+                        
+                else:
+                    hypothesis = question.replace('?', '')
+                    hypothesis = f"{hypothesis.lstrip()} adalah {answer}"
+
+        elif type == 'machine_generation_with_rule_based':
+            hypothesis = smoothing(question, answer, type="rule_based")
+            hypothesis = nlp_tg_ind(hypothesis)[0]['generated_text']
+
+        elif type == 'pure_machine_generation':
+            hypothesis = f"{question} {answer}"         
+            hypothesis = nlp_tg_ind(hypothesis)[0]['generated_text']
+
+        elif type == 'machine_generation_with_translation':
+            hypothesis = smoothing(question, answer, type="rule_based")
+
+            try:
+                hypothesis = GoogleTranslator(source='id', target='en').translate(hypothesis)
+                hypothesis = nlp_tg_eng(hypothesis)[0]['generated_text']
+                hypothesis = GoogleTranslator(source='en', target='id').translate(hypothesis)
+            
+            except:
+                hypothesis = smoothing(question, answer, type="rule_based")
+
+            if hypothesis is None:
+                hypothesis = smoothing(question, answer, type="rule_based")
+        
+        elif type == 'just_concat_answer_and_question':
+
+            #if answer != "" and answer == str:
+            #    hypothesis = f"{question} {answer}"
+
+            #else:
+            #    hypothesis = f"{question} {NO_ANSWER_STATEMENT}"
+
+            hypothesis = f"{question} {answer}"
+
+        return hypothesis.strip()
 
     def create_df_with_prediction(df):
         
