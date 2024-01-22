@@ -56,7 +56,7 @@ if __name__ == "__main__":
         MODEL_SC_NAME = "muhammadravi251001/fine-tuned-NLI-indonli_mnli_squadid-nli-with-xlm-roberta-large"
     
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '5'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 
@@ -385,7 +385,7 @@ if __name__ == "__main__":
                                        no_repeat_ngram_size=2, 
                                        top_k=50, 
                                        top_p=0.95,
-                                       **tokenizer_kwargs)
+                                       max_length=512)
         
         generated_text = tokenizer_tg_ind.batch_decode(output, skip_special_tokens=True)
         
@@ -400,7 +400,7 @@ if __name__ == "__main__":
                                        no_repeat_ngram_size=2, 
                                        top_k=50, 
                                        top_p=0.95,
-                                       **tokenizer_kwargs)
+                                       max_length=512)
         
         generated_text = tokenizer_tg_eng.batch_decode(output, skip_special_tokens=True)
         

@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # Define tool and model of the tool
+# get_ipython().system('nvidia-smi')
+
 # Below, it is some settings to run in my local.
 
 import os, torch
@@ -6,7 +12,9 @@ os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 os.environ['CUDA_VISIBLE_DEVICES'] = '6'
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 # You can tweak your settings too in code below.
+
 import argparse
 import sys
 
@@ -37,7 +45,6 @@ TASK_PARAPHRASER_NAME = "text2text-generation"
 MODEL_PARAPHRASER_NAME = ""
 
 # # Import anything
-
 import transformers
 import evaluate
 import torch
@@ -82,8 +89,8 @@ from transformers import (
     pipeline
 )
 
-# # Retrieve QA dataset
 
+# # Retrieve QA dataset
 print("PROGRAM STARTED")
 
 if (DATA_NAME == "squad-id"):
@@ -296,15 +303,21 @@ data_qas_test_df = retrieve_answer_text(data_qas_test_df)
 
 
 # ## Create NLI dataset from copy of QA dataset above
+
 data_nli_train_df = data_qas_train_df.copy()
 data_nli_val_df = data_qas_val_df.copy()
 data_nli_test_df = data_qas_test_df.copy()
+
+data_qas_train_df
 
 data = {
     'context': ["Tanpa beasiswa, Ogilvy tidak bisa kuliah di Fettes atau Oxford University karena bisnis ayahnya terkena dampak depresi pertengahan dekade 1920-an. Namun, kuliahnya tidak berhasil dan ia meninggalkan Oxford untuk ke Paris pada tahun 1931 tempat ia menjadi chef magang di Majestic Hotel. Setelah setahun, ia kembali ke Skotlandia dan mulai menjual kompor masak AGA dari rumah ke rumah. Keberhasilannya dalam menjual kompor ini membuatnya dikenal sebagai karyawan, yang kemudian memintanya menulis manual instruksi, The Theory and Practice of Selling the AGA Cooker, untuk staf penjualan lainnya. Tiga puluh tahun kemudian, editor majalah Fortune menyebutnya sebagai manual instruksi penjualan terbaik yang pernah ditulis."],
     'question': ["Apa alasan Ogilvy tidak bisa kuliah di Fettes atau Oxford University?"],
     'answer': ["ogilvy tidak bisa kuliah di fettes atau oxford university karena bisnis ayahnya terkena dampak depresi pertengahan dekade 1920-an."]
 }
+
+#data_debug = pd.DataFrame(data)
+#data_debug
 
 # ## Convert context pair to premise (only renaming column)
 # Renaming it, just for consistency
@@ -315,125 +328,11 @@ data_nli_test_df = data_nli_test_df.rename(columns={"context": "premise"})
 
 #data_debug = data_debug.rename(columns={"context": "premise"})
 
+
 # # Add contradiction label cases
-tokenizer_kwargs = {'truncation': True, 'model_max_length': 512}
 
-tokenizer_ner = AutoTokenizer.from_pretrained(MODEL_NER_NAME)
-model_ner = AutoModelForTokenClassification.from_pretrained(MODEL_NER_NAME)
-model_ner = model_ner.to(device)
-
-tokenizer_chunking = AutoTokenizer.from_pretrained(MODEL_CHUNKING_NAME)
-model_chunking = AutoModelForTokenClassification.from_pretrained(MODEL_CHUNKING_NAME)
-model_chunking = model_chunking.to(device)
-
-def nlp_tools_ner(sentence):
-    
-    inputs = tokenizer_ner(sentence,
-                          return_offsets_mapping=True,
-                          return_tensors="pt",
-                          **tokenizer_kwargs)
-
-    ids = inputs["input_ids"].to(device)
-    mask = inputs["attention_mask"].to(device)
-
-    outputs = model_ner(ids, attention_mask=mask)
-    logits = outputs.logits
-
-    active_logits = logits.view(-1, model_ner.config.num_labels)
-    flattened_predictions = torch.argmax(active_logits, dim=1)
-
-    tokens = tokenizer_ner.tokenize(sentence)
-    token_predictions = [model_ner.config.id2label[i] for i in flattened_predictions.cpu().numpy()]
-
-    offset_mapping = inputs["offset_mapping"].squeeze().tolist()
-
-    results = []
-
-    entity = None
-    start_index = 0
-
-    for i, (token, token_pred, mapping) in enumerate(zip(tokens, token_predictions, offset_mapping)):
-        if token_pred != 'O':
-            if entity:
-                if entity[2:] != token_pred[2:]:
-                    results.append({
-                        'entity': entity[2:],
-                        'score': 1.0,
-                        'index': i - 1,
-                        'word': tokens[start_index:i][0],
-                        'start': start_index,
-                        'end': i - 1
-                    })
-            entity = token_pred
-            start_index = i
-
-    if entity:
-        results.append({
-            'entity': entity[2:],
-            'score': 1.0,
-            'index': i,
-            'word': tokens[start_index:][0],
-            'start': start_index,
-            'end': i
-        })
-
-    return results
-
-def nlp_tools_chunking(sentence):
-    
-    inputs = tokenizer_chunking(sentence,
-                          return_offsets_mapping=True,
-                          return_tensors="pt",
-                          **tokenizer_kwargs)
-
-    ids = inputs["input_ids"].to(device)
-    mask = inputs["attention_mask"].to(device)
-
-    outputs = model_chunking(ids, attention_mask=mask)
-    logits = outputs.logits
-
-    active_logits = logits.view(-1, model_chunking.config.num_labels)
-    flattened_predictions = torch.argmax(active_logits, dim=1)
-
-    tokens = tokenizer_chunking.tokenize(sentence)
-    token_predictions = [model_chunking.config.id2label[i] for i in flattened_predictions.cpu().numpy()]
-
-    offset_mapping = inputs["offset_mapping"].squeeze().tolist()
-
-    results = []
-
-    entity = None
-    start_index = 0
-
-    for i, (token, token_pred, mapping) in enumerate(zip(tokens, token_predictions, offset_mapping)):
-        if token_pred != 'O':
-            if entity:
-                if entity[2:] != token_pred[2:]:
-                    results.append({
-                        'entity': entity[2:],
-                        'score': 1.0,
-                        'index': i - 1,
-                        'word': tokens[start_index:i][0],
-                        'start': start_index,
-                        'end': i - 1
-                    })
-            entity = token_pred
-            start_index = i
-
-    if entity:
-        results.append({
-            'entity': entity[2:],
-            'score': 1.0,
-            'index': i,
-            'word': tokens[start_index:][0],
-            'start': start_index,
-            'end': i
-        })
-
-    return results
-
-""" Uncomment this if you want to use pipeline instead of .predict()
 # ## Import pipeline to create contradiction cases
+
 nlp_tools_ner = pipeline(task = TASK_NER_NAME, 
                      model = MODEL_NER_NAME, 
                      tokenizer = AutoTokenizer.from_pretrained(MODEL_NER_NAME, 
@@ -447,7 +346,6 @@ nlp_tools_chunking = pipeline(task = TASK_CHUNKING_NAME,
                                                                model_max_length=512, 
                                                                truncation=True),
                      aggregation_strategy = 'simple')
-"""
 
 
 # ## Add NER and chunking tag column in DataFrame
@@ -621,6 +519,7 @@ data_nli_test_df = add_ner_and_chunking_all_tag(data_nli_test_df)
 
 #data_debug = add_ner_and_chunking_all_tag(data_debug)
 #data_debug
+
 
 # # Create wrong answer
 # This function useful for sorting the closest distance
@@ -967,77 +866,118 @@ def cleaning_premise(premise):
 # This function is the main idea to create wrong answer
 # Though, this function is helper function
 
-def create_wrong_answer(data, batch_size=32, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
-    result = []
+def create_wrong_answer(data, NO_ANSWER_STATEMENT=NO_ANSWER_STATEMENT):
     
-    num_batches = len(data) // batch_size
+    data['same_ner_tag_answer'] = ""
+    data['same_chunking_tag_answer'] = ""
+    data['wrong_answer'] = ""
+    data['no_answer'] = ""
+    data['plausible_answer_based_on_method'] = ""
+    data['properties'] = ""
+    
+    #print("FOR A DEBUG PUPROSE")
+    
+    for i in tqdm(range(len(data))):
+        
+        #print(f"Iteration: {i}")
+        #print(f"Premise: {data['premise'][i]}")
+        #print(f"Question: {data['question'][i]}")
+        #print(f"Right answer: {data['answer'][i]}")
+        
+        right_answer = data['answer'][i]
+        premise = cleaning_premise(data['premise'][i])
 
-    for batch in tqdm(range(num_batches)):
-        batch_data = data[batch * batch_size: (batch + 1) * batch_size]
+        same_ner_tag_answer_array = list()
+        same_chunking_tag_answer_array = list()
 
-        for idx in range(len(batch_data)):
-            row = batch_data.iloc[idx]
+        ner_tag_answer = data['ner_tag_answer'][i]
+        ner_tag_premise = data['ner_tag_premise'][i]
 
-            right_answer = row['answer']
-            premise = cleaning_premise(row['premise'])
-
-            same_ner_tag_answer_array = list()
-            same_chunking_tag_answer_array = list()
-
-            ner_tag_answer = row['ner_tag_answer']
-            ner_tag_premise = row['ner_tag_premise']
-
-            chunking_tag_answer = row['chunking_tag_answer']
-            chunking_tag_premise = row['chunking_tag_premise']
-
-            # Jika baris data tersebut tidak memiliki jawaban (right_answer kosong), lakukan operasi lain dan lanjutkan
-            if right_answer == "":
-                result.append({
-                    'same_ner_tag_answer': [],
-                    'same_chunking_tag_answer': [],
-                    'wrong_answer': "NULL",
-                    'no_answer': "NULL",
-                    'plausible_answer_based_on_method': [],
-                    'properties': "Unanswerable question"
-                })
-                continue
-
-            same_ner_tag_answer = grouping_same_tag(ner_tag_answer, ner_tag_premise, same_ner_tag_answer_array, "ner")
-            same_chunking_tag_answer = grouping_same_tag(chunking_tag_answer, chunking_tag_premise, same_chunking_tag_answer_array, "chunking")
-
-            plausible_answer_array = list()
-
-            if is_number(right_answer) or is_date(right_answer) or is_time(right_answer):
-                plausible_answer_array = matching_regex(right_answer, chunking_tag_premise)
-                plausible_answer_array = filtering_plausible_answer(right_answer, plausible_answer_array)
-
-                if len(plausible_answer_array) > 0:
-                    plausible_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
-                    wrong_answer = plausible_answer_array[0].strip()
-                    properties = "Regex matched with right answer, and get alternative answer"
-                else:
-                    wrong_answer = NO_ANSWER_STATEMENT
-                    properties = "Regex matched with right answer, but no alternative answer"
+        chunking_tag_answer = data['chunking_tag_answer'][i]
+        chunking_tag_premise = data['chunking_tag_premise'][i]
+        
+        # If that row of data is unanswerable, do this, then continue
+        
+        if right_answer == "":
+            data['properties'][i] = "Unanswerable question"
+            data['wrong_answer'][i] = "NULL"
+            data['no_answer'][i] = "NULL"
+            data['plausible_answer_based_on_method'][i] = "Unanswerable question"
+            continue
+            
+        # Grouped with the same NER & Chunking group, between answer and word of premise
+        
+        data['same_ner_tag_answer'][i] = grouping_same_tag(ner_tag_answer,
+                                                           ner_tag_premise,
+                                                           same_ner_tag_answer_array, "ner")
+        
+        data['same_chunking_tag_answer'][i] = grouping_same_tag(chunking_tag_answer, 
+                                                                chunking_tag_premise, 
+                                                                same_chunking_tag_answer_array, "chunking")
+        
+        # Start to create wrong answer
+        plausible_answer_array = list()
+        
+        # Firstly, matching regex
+        if is_number(right_answer) or is_date(right_answer) or is_time(right_answer):
+            
+            plausible_answer_array = matching_regex(right_answer, chunking_tag_premise)
+            plausible_answer_array = filtering_plausible_answer(right_answer, plausible_answer_array)
+            
+            if len(plausible_answer_array) > 0:
+                plausible_answer_array = return_similarity_sorted_array(right_answer, plausible_answer_array)
+                wrong_answer = plausible_answer_array[0].strip()
+                data['properties'][i] = "Regex matched with right answer, and get alternative answer"
+            
             else:
-                if same_ner_tag_answer:
-                    wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, idx, "ner", plausible_answer_array, premise)
-                elif same_chunking_tag_answer:
-                    wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, idx, "chunking", plausible_answer_array, premise)
-                else:
-                    properties = "No same tag detected, search random word from premise"
-                    wrong_answer = overlap_checking_with_random_word(premise, right_answer)
-                    plausible_answer_array = list()
+                wrong_answer = NO_ANSWER_STATEMENT
+                data['properties'][i] = "Regex matched with right answer, but no alternative answer"
+            
+            data['wrong_answer'][i] = wrong_answer
+            data['no_answer'][i] = NO_ANSWER_STATEMENT
+            data['plausible_answer_based_on_method'][i] = list(set(plausible_answer_array))
+            continue
 
-            result.append({
-                'same_ner_tag_answer': same_ner_tag_answer,
-                'same_chunking_tag_answer': same_chunking_tag_answer,
-                'wrong_answer': wrong_answer,
-                'no_answer': NO_ANSWER_STATEMENT,
-                'plausible_answer_based_on_method': list(set(plausible_answer_array)),
-                'properties': properties
-            })
+        # Perform NER classification
+        # If the NER of the right_answer can be detected, then calculate the distance using semantic 
+        # similarity or word vectors between the right_answer and various possible wrong_answers with 
+        # the same NER as the right_answer. Once done, proceed to the final wrong_answer.
 
-    return pd.DataFrame(result)
+        if data['same_ner_tag_answer'][i] != list():
+            wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, \
+                                                                      i, "ner", plausible_answer_array, premise)
+            
+        # If the NER of the right_answer cannot be detected (NULL) or context/premise does not contain 
+        # any of NER of right_answer, then the POS/Chunking of the right_answer will be identified.
+        
+        # Perform POS/Chunking classification
+        
+        else:
+            
+            # If the POS/Chunking of the right_answer can be detected, then calculate the distance 
+            # using semantic similarity or word vectors between the right_answer and various possible 
+            # wrong_answers with the same POS/Chunking as the right_answer. Once done, proceed to the 
+            # final wrong_answer.
+            
+            if data['same_chunking_tag_answer'][i] != list():
+                wrong_answer, plausible_answer_array, properties = return_wrong_and_plausible(data, right_answer, \
+                                                                          i, "chunking", plausible_answer_array, premise)
+            
+            # If the POS/Chunking of the right_answer cannot be detected (NULL) or context/premise 
+            # does not contain any of NER of right_answer, then the final wrong_answer will be chosen 
+            # selected random word from premise.
+            
+            else:
+                properties = "No same tag detected, search random word from premise"
+                wrong_answer = overlap_checking_with_random_word(premise, right_answer)
+                plausible_answer_array = list()
+        
+        data['properties'][i] = properties
+        data['wrong_answer'][i] = wrong_answer
+        data['no_answer'][i] = NO_ANSWER_STATEMENT
+        data['plausible_answer_based_on_method'][i] = list(set(plausible_answer_array))
+            
+    return data
 
 data_nli_train_df = create_wrong_answer(data_nli_train_df)
 data_nli_val_df = create_wrong_answer(data_nli_val_df)
@@ -1057,8 +997,8 @@ data_nli_test_df = create_wrong_answer(data_nli_test_df)
 #print(data_debug['ner_tag_premise'][0])
 #print(data_debug['chunking_tag_premise'][0])
 
-# # Split to two dataset: right dataset & wrong dataset
 
+# # Split to two dataset: right dataset & wrong dataset
 # This method is just only
 # for aesthetics of column number
 
@@ -1157,6 +1097,7 @@ def balancing_data(data1, data2):
         
     return data1, data2
 
+
 data_nli_unanswerable_right_train_df, data_nli_unanswerable_wrong_train_df = balancing_data(data_nli_unanswerable_right_train_df,
                                                                                             data_nli_unanswerable_wrong_train_df)
 
@@ -1203,6 +1144,13 @@ print("TEST:", len(data_nli_unanswerable_wrong_test_df))
 
 
 # # Convert question-answer pair to hypothesis
+# Maybe we can try this approach
+
+#nlp_tools_paraphraser = pipeline(task = TASK_PARAPHRASER_NAME, 
+#                     model = MODEL_PARAPHRASER_NAME, 
+#                     tokenizer = AutoTokenizer.from_pretrained(MODEL_PARAPHRASER_NAME, 
+#                                                               model_max_length=512, 
+#                                                               truncation=True))
 
 # This function useful for
 # retrieve hypothesis from
@@ -1296,7 +1244,6 @@ data_nli_unanswerable_wrong_train_df = move_to_column_number(data_nli_unanswerab
 data_nli_unanswerable_wrong_val_df = move_to_column_number(data_nli_unanswerable_wrong_val_df, "label", 4)
 data_nli_unanswerable_wrong_test_df = move_to_column_number(data_nli_unanswerable_wrong_test_df, "label", 4)
 
-
 # # Concat the right and wrong NLI to one NLI dataset
 
 data_nli_train_df_final = pd.concat([data_nli_answerable_right_train_df, 
@@ -1351,6 +1298,7 @@ print("TEST FINAL")
 print(len(data_nli_test_df_final))
 
 # # Convert to DataFrame format to CSV
+
 data_nli_train_df_final.to_csv(f"{DATA_NAME}_nli_train_df.csv", index=False)
 data_nli_val_df_final.to_csv(f"{DATA_NAME}_nli_val_df.csv", index=False)
 data_nli_test_df_final.to_csv(f"{DATA_NAME}_nli_test_df.csv", index=False)
